@@ -20,6 +20,10 @@ def _get_mlx():
         _mx = mx
     return _mx
 
+# 导入复杂操作和线程映射
+from .complex_ops import get_complex_ops_map
+from .thread_mapping import map_kernel_launch_params
+
 # Triton到MLX数据类型映射
 DTYPE_MAP = {
     # 将在实际实现中填充
@@ -97,6 +101,10 @@ def init_op_map():
         'tt.load': handle_load,  # 自定义处理函数
         'tt.store': handle_store,  # 自定义处理函数
     }
+    
+    # 添加复杂操作映射
+    complex_ops = get_complex_ops_map()
+    OP_MAP.update(complex_ops)
 
 # 特殊操作处理函数
 def handle_reduction(op, operands, converter):
@@ -215,6 +223,26 @@ class TritonToMLXConverter:
         self.tensor_map = {}  # 存储已转换的tensor
         self.op_map = OP_MAP  # 操作映射
         self.memory_manager = MemoryManager()  # 内存管理器
+        self.grid_info = None  # 存储网格信息，用于线程映射
+        
+    def set_grid_info(self, grid_dim, block_dim):
+        """设置网格信息，用于线程映射"""
+        self.grid_info = {
+            "grid": grid_dim,
+            "block": block_dim
+        }
+        
+    def get_launch_params(self):
+        """获取内核启动参数"""
+        if self.grid_info:
+            return map_kernel_launch_params(self.grid_info)
+        else:
+            # 默认值
+            return {
+                "grid_size": (1, 1, 1),
+                "threadgroup_size": (1, 1, 1),
+                "shared_memory_size": 0
+            }
         
     def get_op_dtype(self, op):
         """获取操作的数据类型"""
@@ -246,11 +274,16 @@ class TritonToMLXConverter:
         if not kernel_fn:
             raise ValueError("无法找到Triton内核函数")
             
+        # 从元数据中提取网格信息
+        if metadata and "grid" in metadata:
+            grid = metadata["grid"]
+            self.set_grid_info(grid.get("grid", (1, 1, 1)), grid.get("block", (1, 1, 1)))
+            
         # 转换函数体为MLX计算图
         inputs, body = self._convert_function(kernel_fn, metadata, options)
         
         # 包装为可调用对象
-        return MLXKernel(inputs, body, metadata, options, self.memory_manager)
+        return MLXKernel(inputs, body, metadata, options, self.memory_manager, self.get_launch_params())
         
     def _extract_main_kernel(self, module):
         """提取主kernel函数"""
@@ -386,12 +419,13 @@ class TritonToMLXConverter:
 class MLXKernel:
     """MLX内核表示"""
     
-    def __init__(self, inputs, body, metadata, options, memory_manager):
+    def __init__(self, inputs, body, metadata, options, memory_manager, launch_params=None):
         self.inputs = inputs
         self.body = body
         self.metadata = metadata
         self.options = options
         self.memory_manager = memory_manager
+        self.launch_params = launch_params or {}
         self.mx = _get_mlx()
         
     def __call__(self, *args, **kwargs):
@@ -417,6 +451,14 @@ class MLXKernel:
         self.mx.eval(result)
         
         return result
+    
+    def get_launch_params(self):
+        """获取内核启动参数"""
+        return self.launch_params
+        
+    def get_metadata(self):
+        """获取内核元数据"""
+        return self.metadata
 
 def convert_to_mlx(triton_ir, metadata, options):
     """将Triton IR转换为MLX计算图"""
