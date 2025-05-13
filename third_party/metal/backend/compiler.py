@@ -39,6 +39,19 @@ class MetalBackend(BaseBackend):
         self._converter = None
         self._driver = None
         
+        # Import instrumentation
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'python'))
+        try:
+            import metal_instrumentation
+            self.instrumentation = metal_instrumentation.get_metal_instrumentation()
+            self.error_diagnostics = metal_instrumentation.get_error_diagnostics()
+            self.has_instrumentation = True
+        except ImportError:
+            print("Warning: metal_instrumentation module not found. Debug and performance tracking will be disabled.")
+            self.has_instrumentation = False
+            self.instrumentation = None
+            self.error_diagnostics = None
+        
     @property
     def mlx(self):
         """Lazy load MLX"""
@@ -103,32 +116,97 @@ class MetalBackend(BaseBackend):
         
     def make_ttir(self, src, metadata, options: MetalOptions):
         """Optimize Triton IR to canonical form"""
-        # Apply target-specific optimizations to the IR
-        from triton.compiler.compiler import optimize_ir_for_backend
-        optimized_src = optimize_ir_for_backend(src, self.target, options)
+        if self.has_instrumentation:
+            with self.instrumentation.timer("make_ttir"):
+                return self._make_ttir_impl(src, metadata, options)
+        return self._make_ttir_impl(src, metadata, options)
         
-        # Store options in metadata for later stages
-        if metadata is not None:
-            metadata["opt_level"] = options.opt_level
-            metadata["arch"] = options.arch
+    def _make_ttir_impl(self, src, metadata, options: MetalOptions):
+        """Implementation of Triton IR optimization"""
+        try:
+            # Apply target-specific optimizations to the IR
+            from triton.compiler.compiler import optimize_ir_for_backend
+            optimized_src = optimize_ir_for_backend(src, self.target, options)
             
-        return optimized_src
+            # Store options in metadata for later stages
+            if metadata is not None:
+                metadata["opt_level"] = options.opt_level
+                metadata["arch"] = options.arch
+                
+            return optimized_src
+        except Exception as e:
+            import traceback
+            error_msg = f"Triton IR optimization failed: {str(e)}\n{traceback.format_exc()}"
+            
+            # Use error diagnostics if available
+            if self.has_instrumentation:
+                error_code, description, suggestions = self.error_diagnostics.diagnose_error(
+                    error_msg, 
+                    kernel_name=metadata.get("name", "unknown") if metadata else "unknown",
+                    source_code=src
+                )
+                
+                if options.debug_info:
+                    print(f"Error {error_code}: {description}")
+                    print("Suggestions:")
+                    for suggestion in suggestions:
+                        print(f"- {suggestion}")
+            
+            if options.debug_info:
+                print(error_msg)
+            raise RuntimeError(error_msg)
         
     def make_ttgir(self, src, metadata, options: MetalOptions):
         """Convert TTIR to TTGIR"""
-        # This would typically involve layout planning and optimization
-        # For now, we'll make minimal changes and rely on MLX for optimizations
+        if self.has_instrumentation:
+            with self.instrumentation.timer("make_ttgir"):
+                return self._make_ttgir_impl(src, metadata, options)
+        return self._make_ttgir_impl(src, metadata, options)
         
-        # Include thread/grid dimensions in metadata
-        if metadata is not None:
-            metadata["num_warps"] = options.num_warps
-            metadata["num_ctas"] = options.num_ctas
-            metadata["max_shared_memory"] = options.max_shared_memory
+    def _make_ttgir_impl(self, src, metadata, options: MetalOptions):
+        """Implementation of TTIR to TTGIR conversion"""
+        try:
+            # This would typically involve layout planning and optimization
+            # For now, we'll make minimal changes and rely on MLX for optimizations
             
-        return src
+            # Include thread/grid dimensions in metadata
+            if metadata is not None:
+                metadata["num_warps"] = options.num_warps
+                metadata["num_ctas"] = options.num_ctas
+                metadata["max_shared_memory"] = options.max_shared_memory
+                
+            return src
+        except Exception as e:
+            import traceback
+            error_msg = f"TTGIR conversion failed: {str(e)}\n{traceback.format_exc()}"
+            
+            # Use error diagnostics if available
+            if self.has_instrumentation:
+                error_code, description, suggestions = self.error_diagnostics.diagnose_error(
+                    error_msg, 
+                    kernel_name=metadata.get("name", "unknown") if metadata else "unknown",
+                    source_code=src
+                )
+                
+                if options.debug_info:
+                    print(f"Error {error_code}: {description}")
+                    print("Suggestions:")
+                    for suggestion in suggestions:
+                        print(f"- {suggestion}")
+            
+            if options.debug_info:
+                print(error_msg)
+            raise RuntimeError(error_msg)
         
     def make_mlxir(self, src, metadata, options: MetalOptions):
         """Convert TTGIR to MLX computation graph representation"""
+        if self.has_instrumentation:
+            with self.instrumentation.timer("make_mlxir"):
+                return self._make_mlxir_impl(src, metadata, options)
+        return self._make_mlxir_impl(src, metadata, options)
+    
+    def _make_mlxir_impl(self, src, metadata, options: MetalOptions):
+        """Implementation of TTGIR to MLX conversion"""
         # Convert Triton IR to MLX computation graph
         try:
             # Import Metal IR transformations for advanced optimizations
@@ -145,21 +223,39 @@ class MetalBackend(BaseBackend):
             
             # Apply Metal-specific IR transformations if available
             if has_ir_transforms and parsed_ir:
-                # Add compilation options to metadata for the transformations
-                transform_metadata = metadata.copy() if metadata else {}
-                transform_metadata.update({
-                    "num_warps": options.num_warps,
-                    "vectorize": options.vectorize,
-                    "shard_size": options.mlx_shard_size,
-                    "arch": options.arch,
-                    "opt_level": options.opt_level,
-                    "enable_fp_fusion": options.enable_fp_fusion,
-                    "max_shared_memory": options.max_shared_memory,
-                    "enable_interleaving": options.enable_interleaving
-                })
-                
-                # Apply transformations
-                transformed_ir, transform_summary = metal_ir_transforms.transform_ir(parsed_ir, transform_metadata)
+                if self.has_instrumentation:
+                    with self.instrumentation.timer("ir_transforms"):
+                        # Add compilation options to metadata for the transformations
+                        transform_metadata = metadata.copy() if metadata else {}
+                        transform_metadata.update({
+                            "num_warps": options.num_warps,
+                            "vectorize": options.vectorize,
+                            "shard_size": options.mlx_shard_size,
+                            "arch": options.arch,
+                            "opt_level": options.opt_level,
+                            "enable_fp_fusion": options.enable_fp_fusion,
+                            "max_shared_memory": options.max_shared_memory,
+                            "enable_interleaving": options.enable_interleaving
+                        })
+                        
+                        # Apply transformations
+                        transformed_ir, transform_summary = metal_ir_transforms.transform_ir(parsed_ir, transform_metadata)
+                else:
+                    # Add compilation options to metadata for the transformations
+                    transform_metadata = metadata.copy() if metadata else {}
+                    transform_metadata.update({
+                        "num_warps": options.num_warps,
+                        "vectorize": options.vectorize,
+                        "shard_size": options.mlx_shard_size,
+                        "arch": options.arch,
+                        "opt_level": options.opt_level,
+                        "enable_fp_fusion": options.enable_fp_fusion,
+                        "max_shared_memory": options.max_shared_memory,
+                        "enable_interleaving": options.enable_interleaving
+                    })
+                    
+                    # Apply transformations
+                    transformed_ir, transform_summary = metal_ir_transforms.transform_ir(parsed_ir, transform_metadata)
                 
                 # Store transformation summary in metadata
                 if metadata is not None:
@@ -169,12 +265,21 @@ class MetalBackend(BaseBackend):
                 src = self._serialize_ir_after_transform(transformed_ir)
             
             # Convert to MLX IR using the standard converter
-            mlx_ir = self.converter.convert_to_mlx(
-                src,
-                num_warps=options.num_warps,
-                vectorize=options.vectorize,
-                shard_size=options.mlx_shard_size
-            )
+            if self.has_instrumentation:
+                with self.instrumentation.timer("mlx_conversion"):
+                    mlx_ir = self.converter.convert_to_mlx(
+                        src,
+                        num_warps=options.num_warps,
+                        vectorize=options.vectorize,
+                        shard_size=options.mlx_shard_size
+                    )
+            else:
+                mlx_ir = self.converter.convert_to_mlx(
+                    src,
+                    num_warps=options.num_warps,
+                    vectorize=options.vectorize,
+                    shard_size=options.mlx_shard_size
+                )
             
             # Store MLX metadata
             if metadata is not None:
@@ -185,6 +290,21 @@ class MetalBackend(BaseBackend):
         except Exception as e:
             import traceback
             error_msg = f"MLX conversion failed: {str(e)}\n{traceback.format_exc()}"
+            
+            # Use error diagnostics if available
+            if self.has_instrumentation:
+                error_code, description, suggestions = self.error_diagnostics.diagnose_error(
+                    error_msg, 
+                    kernel_name=metadata.get("name", "unknown") if metadata else "unknown",
+                    source_code=src
+                )
+                
+                if options.debug_info:
+                    print(f"Error {error_code}: {description}")
+                    print("Suggestions:")
+                    for suggestion in suggestions:
+                        print(f"- {suggestion}")
+            
             if options.debug_info:
                 print(error_msg)
             raise RuntimeError(error_msg)
@@ -244,6 +364,13 @@ class MetalBackend(BaseBackend):
         
     def make_metallib(self, src, metadata, options: MetalOptions):
         """Generate Metal library from MLX computation graph"""
+        if self.has_instrumentation:
+            with self.instrumentation.timer("make_metallib"):
+                return self._make_metallib_impl(src, metadata, options)
+        return self._make_metallib_impl(src, metadata, options)
+        
+    def _make_metallib_impl(self, src, metadata, options: MetalOptions):
+        """Implementation of Metal library generation"""
         try:
             # MLX handles the Metal library generation
             # We'll create a serialized representation of the computation
@@ -263,9 +390,33 @@ class MetalBackend(BaseBackend):
                     with open(ir_path, "w") as f:
                         f.write(src)
                 
+                # Record debug info if instrumentation is available
+                if self.has_instrumentation and metadata and options.debug_info:
+                    source_file = metadata.get("source_file", "unknown")
+                    line_number = metadata.get("line_number", 0)
+                    self.instrumentation.record_debug_info(
+                        kernel_name=kernel_name,
+                        source_file=source_file,
+                        line_number=line_number,
+                        variable_values={
+                            "num_warps": options.num_warps,
+                            "vectorize": options.vectorize,
+                            "arch": options.arch,
+                            "opt_level": options.opt_level
+                        }
+                    )
+                
+                # Insert debug prints if needed and enabled
+                if self.has_instrumentation and options.debug_info:
+                    src = self.instrumentation.insert_debug_prints(src, kernel_name)
+                
                 # Compile to Metal via MLX's compilation functions
                 # This is simplified - we would need to integrate with MLX's actual compilation
-                serialized_graph = self.converter.mlx_ir_to_binary(src)
+                if self.has_instrumentation:
+                    with self.instrumentation.timer("mlx_to_binary"):
+                        serialized_graph = self.converter.mlx_ir_to_binary(src)
+                else:
+                    serialized_graph = self.converter.mlx_ir_to_binary(src)
                 
                 # In the actual implementation, we would call MLX's Metal compiler
                 # For now, we'll simulate the resulting binary
@@ -279,6 +430,21 @@ class MetalBackend(BaseBackend):
         except Exception as e:
             import traceback
             error_msg = f"Metal library generation failed: {str(e)}\n{traceback.format_exc()}"
+            
+            # Use error diagnostics if available
+            if self.has_instrumentation:
+                error_code, description, suggestions = self.error_diagnostics.diagnose_error(
+                    error_msg, 
+                    kernel_name=metadata.get("name", "unknown") if metadata else "unknown",
+                    source_code=src
+                )
+                
+                if options.debug_info:
+                    print(f"Error {error_code}: {description}")
+                    print("Suggestions:")
+                    for suggestion in suggestions:
+                        print(f"- {suggestion}")
+            
             if options.debug_info:
                 print(error_msg)
             raise RuntimeError(error_msg)
