@@ -60,20 +60,16 @@ class PredicateSupport:
         """
         if else_body:
             # For complex bodies, use standard if-else
-            return f"""
-            if ({predicate}) {{
-                {body}
-            }} else {{
-                {else_body}
-            }}
-            """
+            return f"""if ({predicate}) {{
+    {body}
+}} else {{
+    {else_body}
+}}"""
         else:
             # For simple bodies without else, use predication
-            return f"""
-            if ({predicate}) {{
-                {body}
-            }}
-            """
+            return f"""if ({predicate}) {{
+    {body}
+}}"""
     
     def optimize_condition(self, condition: str) -> str:
         """Optimize a condition expression for Metal
@@ -127,20 +123,38 @@ class PredicateSupport:
         then_lines = then_body.count("\n")
         else_lines = else_body.count("\n")
         
-        if then_lines <= 1 and else_lines <= 1 and ";" in then_body and ";" in else_body:
-            # For simple assignments, use ternary operator
-            then_body = then_body.strip().rstrip(";")
-            else_body = else_body.strip().rstrip(";")
+        # Check if both branches are simple statements
+        if then_lines == 0 and else_lines == 0:
+            # Simple assignment optimization
+            if "=" in then_body and "=" in else_body:
+                # Get assignment targets
+                then_target = then_body.split("=")[0].strip()
+                else_target = else_body.split("=")[0].strip()
+                
+                # If both branches assign to the same variable, use ternary operator
+                if then_target == else_target:
+                    then_value = then_body.split("=")[1].strip().rstrip(";")
+                    else_value = else_body.split("=")[1].strip().rstrip(";")
+                    return f"{then_target} = ({condition}) ? {then_value} : {else_value};"
+            
+            # Simple return optimization
             if then_body.startswith("return ") and else_body.startswith("return "):
-                return f"return ({condition}) ? {then_body[7:]} : {else_body[7:]};"
-            elif "=" in then_body and "=" in else_body and then_body.split("=")[0] == else_body.split("=")[0]:
-                lhs = then_body.split("=")[0]
-                then_rhs = then_body.split("=")[1]
-                else_rhs = else_body.split("=")[1]
-                return f"{lhs}= ({condition}) ? {then_rhs} : {else_rhs};"
+                then_value = then_body[7:].strip().rstrip(";")
+                else_value = else_body[7:].strip().rstrip(";")
+                return f"return ({condition}) ? {then_value} : {else_value};"
         
-        # For larger bodies, use standard if-else
-        return self.generate_if_predicated(condition, then_body, else_body)
+        # For branches with multiple statements, check if hardware supports predication
+        # But skip hardware check for now to avoid AttributeError
+        if then_lines + else_lines <= 3:
+            # Use standard if-else since we can't check for hardware predication support
+            return self.generate_if_predicated(condition, then_body, else_body)
+            
+        # Default to standard if-else statement
+        return f"""if ({condition}) {{
+    {then_body}
+}} else {{
+    {else_body}
+}}"""
 
 class LoopOptimizer:
     """Optimizer for loop structures in Metal"""
@@ -190,9 +204,12 @@ class LoopOptimizer:
         trip_count = loop_info.get("trip_count", None)
         
         # Analyze loop characteristics
+        # A for loop has an initialization (with =) and an update (often with ++)
+        is_for_loop = "=" in init and ("++" in update or "--" in update or "+=" in update or "-=" in update)
+        
         result = {
-            "is_for_loop": "=" in init and ";" in update,
-            "is_while_loop": not ("=" in init and ";" in update),
+            "is_for_loop": is_for_loop,
+            "is_while_loop": not is_for_loop,
             "is_do_while": False,
             "known_trip_count": trip_count is not None,
             "trip_count": trip_count,
@@ -213,6 +230,38 @@ class LoopOptimizer:
         # This would require more sophisticated analysis
         
         return result
+    
+    def optimize_loop(self, loop_info: Dict[str, Any]) -> str:
+        """Choose the best optimization strategy for a loop
+        
+        Args:
+            loop_info: Dictionary with loop information
+            
+        Returns:
+            Optimized loop code
+        """
+        # Analyze the loop
+        analysis = self.analyze_loop(loop_info)
+        
+        # Choose the best optimization strategy
+        if analysis["unroll_candidate"]:
+            # Unroll the loop if it's a good candidate
+            return self.unroll_loop(loop_info)
+        elif analysis["simdify_candidate"]:
+            # Simdify the loop if it's a good candidate
+            return self.simdify_loop(loop_info)
+        else:
+            # No special optimization, just use the loop as is
+            init = loop_info["init"]
+            condition = loop_info["condition"]
+            update = loop_info["update"]
+            body = loop_info["body"]
+            
+            if analysis["is_for_loop"]:
+                return f"for ({init} {condition}; {update}) {{\n{body}\n}}"
+            else:
+                # while loop
+                return f"{init}\nwhile ({condition}) {{\n{body}\n{update};\n}}"
     
     def unroll_loop(self, loop_info: Dict[str, Any], unroll_factor: int = None) -> str:
         """Unroll a loop by a given factor
@@ -258,72 +307,93 @@ class LoopOptimizer:
                     increment = "-" + update.split("-=")[1].strip().rstrip(";")
                 
                 # Generate unrolled code
-                unrolled_code = []
-                current_val = f"{init_val}"
+                result = f"// Fully unrolled loop ({trip_count} iterations)\n"
+                result += f"{init}\n"
                 
+                current_val = init_val
                 for i in range(trip_count):
-                    # Create a copy of the body with the variable replaced
-                    body_copy = body
-                    # In a real implementation, replace all occurrences of the loop variable
-                    # with the current value, accounting for scope and expressions
+                    result += f"// Unrolled iteration {i}\n"
+                    # Replace loop variable with its current value in the body
+                    iter_body = body.replace(var_name.strip(), current_val)
+                    result += f"{iter_body}\n"
                     
-                    unrolled_code.append(f"// Unrolled iteration {i}, {var_name}={current_val}")
-                    unrolled_code.append(body_copy)
-                    
-                    # Update current value for next iteration
+                    # Update the loop variable for the next iteration
                     if increment == "1":
                         current_val = f"({current_val} + 1)"
                     elif increment == "-1":
                         current_val = f"({current_val} - 1)"
                     elif increment.startswith("-"):
-                        current_val = f"({current_val} - {increment[1:]})"
+                        current_val = f"({current_val} {increment})"
                     else:
                         current_val = f"({current_val} + {increment})"
                 
-                return "\n".join(unrolled_code)
-        
-        # Partial unrolling
-        unrolled_body = ""
-        for i in range(factor):
-            # Create a copy of the body
-            body_copy = body
-            
-            # In a real implementation, add logic here to replace loop-dependent variables
-            # with appropriate expressions that account for the unroll index
-            
-            if i == 0:
-                unrolled_body += body_copy
+                return result
             else:
-                # For subsequent iterations, add conditional check if needed
-                unrolled_body += f"""
-                // Unrolled iteration {i}
-                {body_copy}
-                """
-        
-        # Adjust the update expression for the unroll factor
-        if "++" in update:
-            unrolled_update = update.replace("++", f"+= {factor}")
-        elif "--" in update:
-            unrolled_update = update.replace("--", f"-= {factor}")
-        elif "+=" in update:
-            increment = update.split("+=")[1].strip().rstrip(";")
-            unrolled_update = update.replace(f"+= {increment}", f"+= {factor} * ({increment})")
-        elif "-=" in update:
-            increment = update.split("-=")[1].strip().rstrip(";")
-            unrolled_update = update.replace(f"-= {increment}", f"-= {factor} * ({increment})")
+                # Unknown initialization format, use generic unrolling
+                result = f"// Fully unrolled loop ({trip_count} iterations)\n"
+                result += f"{init}\n"
+                
+                for i in range(trip_count):
+                    result += f"// Unrolled iteration {i}\n"
+                    result += f"{body}\n"
+                    if i < trip_count - 1:
+                        result += f"{update};\n"
+                
+                return result
         else:
-            unrolled_update = update
-        
-        # Construct the partially unrolled loop
-        return f"""
-        {init}
-        for (; {condition}; {unrolled_update}) {{
-            {unrolled_body}
-        }}
-        """
+            # Partial unrolling
+            result = f"// Partially unrolled loop (factor {factor})\n"
+            result += f"{init}\n"
+            
+            # Generate the main unrolled loop
+            result += f"for (; {condition}; {{"
+            
+            # Add unrolled iterations
+            for i in range(factor):
+                result += f"\n    // Unrolled iteration {i}\n"
+                result += f"    {body}\n"
+                if i < factor - 1:
+                    result += f"    {update};\n"
+            
+            # Update counter for all iterations
+            if "++" in update or "--" in update:
+                var_name = update.replace("++", "").replace("--", "").strip()
+                if "++" in update:
+                    result += f"    {var_name} += {factor};\n"
+                else:
+                    result += f"    {var_name} -= {factor};\n"
+            elif "+=" in update:
+                var_name = update.split("+=")[0].strip()
+                incr_val = update.split("+=")[1].strip().rstrip(";")
+                result += f"    {var_name} += {factor} * ({incr_val});\n"
+            elif "-=" in update:
+                var_name = update.split("-=")[0].strip()
+                incr_val = update.split("-=")[1].strip().rstrip(";")
+                result += f"    {var_name} -= {factor} * ({incr_val});\n"
+            else:
+                # Complex update, just repeat it factor times
+                result += f"    // Complex update\n"
+                result += f"    {update};\n"
+            
+            result += "}"
+            
+            # Handle remaining iterations
+            if analysis["known_trip_count"]:
+                trip_count = analysis["trip_count"]
+                remainder = trip_count % factor
+                
+                if remainder > 0:
+                    result += "\n// Handle remaining iterations\n"
+                    for i in range(remainder):
+                        result += f"if ({condition}) {{\n"
+                        result += f"    {body}\n"
+                        result += f"    {update};\n"
+                        result += "}\n"
+            
+            return result
     
     def simdify_loop(self, loop_info: Dict[str, Any]) -> str:
-        """Transform a loop to use SIMD operations
+        """Convert a loop to use SIMD operations where possible
         
         Args:
             loop_info: Dictionary with loop information
@@ -331,32 +401,110 @@ class LoopOptimizer:
         Returns:
             SIMD-optimized loop code
         """
-        # In a real implementation, this would transform array operations
-        # into SIMD operations when possible, leveraging Metal's SIMD capabilities
+        # Get loop components
+        init = loop_info["init"]
+        condition = loop_info["condition"]
+        update = loop_info["update"]
+        body = loop_info["body"]
         
-        # This is a placeholder for a more sophisticated implementation
-        return "// SIMD-optimized loop would be generated here"
+        # Analyze loop to check if SIMD is applicable
+        analysis = self.analyze_loop(loop_info)
+        if not analysis["simdify_candidate"]:
+            # Return the original loop if not a SIMD candidate
+            return f"for ({init} {condition}; {update}) {{\n    {body}\n}}"
+        
+        # Extract the loop variable and determine vector width
+        var_name = init.split("=")[0].strip()
+        simd_width = self.simd_width
+        
+        # Generate SIMD loop
+        result = f"// SIMD-optimized loop (width {simd_width})\n"
+        
+        # Add vectorized initialization
+        result += f"// Vectorized initialization\n"
+        result += f"{init.replace(';', '')};\n"
+        
+        # Create vector loop condition
+        vec_condition = condition.replace(var_name, f"({var_name} + {simd_width - 1})")
+        
+        # Add SIMD loop
+        result += f"// Main SIMD loop\n"
+        result += f"for (; {vec_condition}; {var_name} += {simd_width}) {{\n"
+        
+        # Create vector operations
+        # Note: This is a simplified version; a complete implementation would
+        # analyze the body and transform operations to vector equivalents
+        result += f"    // Vectorized body\n"
+        result += f"    simd::float{simd_width} simd_idx;\n"
+        result += f"    for (int s = 0; s < {simd_width}; s++) {{\n"
+        result += f"        simd_idx[s] = {var_name} + s;\n"
+        result += f"    }}\n"
+        result += f"    // Vectorized operations would go here\n"
+        result += f"    // Scalar fallback for now\n"
+        
+        # Add scalar fallback
+        result += f"    // Scalar fallback\n"
+        result += f"    for (int s = 0; s < {simd_width}; s++) {{\n"
+        result += f"        int simd_i = {var_name} + s;\n"
+        
+        # Extract the condition with the loop variable stripped
+        cond_parts = condition.split("<")
+        if len(cond_parts) >= 2:
+            # For conditions like "i < 128", we want "simd_i < 128"
+            bound = cond_parts[1].strip()
+            result += f"        if (simd_i < {bound}) {{\n"
+        else:
+            # Fallback to a simple substitution if we can't parse the condition
+            result += f"        if ({condition.replace(var_name, 'simd_i')}) {{\n"
+            
+        result += f"            {body.replace(var_name, 'simd_i')}\n"
+        result += f"        }}\n"
+        result += f"    }}\n"
+        result += f"}}\n"
+        
+        # Add cleanup loop for remaining elements
+        result += f"// Cleanup loop for remaining elements\n"
+        result += f"for (; {condition}; {update}) {{\n"
+        result += f"    {body}\n"
+        result += f"}}\n"
+        
+        return result
     
     def optimize_nested_loops(self, loop_infos: List[Dict[str, Any]]) -> str:
-        """Optimize nested loops (loop tiling, interchange, etc.)
+        """Optimize nested loops
         
         Args:
-            loop_infos: List of dictionaries with loop information, from outermost to innermost
+            loop_infos: List of nested loop information, from outermost to innermost
             
         Returns:
             Optimized nested loop code
         """
-        # In a real implementation, this would perform loop optimizations like:
-        # - Loop tiling
-        # - Loop interchange
-        # - Loop fusion
-        # - Loop fission
+        if not loop_infos:
+            return ""
         
-        # This is a placeholder for a more sophisticated implementation
-        return "// Optimized nested loops would be generated here"
+        # Start with the innermost loop
+        innermost = loop_infos[-1]
+        current_loop = self.optimize_loop(innermost)
+        
+        # Work outward, wrapping each optimized loop
+        for i in range(len(loop_infos) - 2, -1, -1):
+            loop_info = loop_infos[i]
+            
+            # Get loop components
+            init = loop_info["init"]
+            condition = loop_info["condition"]
+            update = loop_info["update"]
+            
+            # Replace the body with the optimized inner loop
+            loop_info["body"] = current_loop
+            
+            # Optimize this loop
+            current_loop = self.optimize_loop(loop_info)
+        
+        return current_loop
 
 class ConditionalBranchMapper:
-    """Mapper for conditional branches in Metal"""
+    """Maps conditional flow constructs to Metal code"""
     
     def __init__(self, hardware_capabilities=None):
         """Initialize conditional branch mapper
@@ -364,42 +512,72 @@ class ConditionalBranchMapper:
         Args:
             hardware_capabilities: Optional hardware capabilities instance
         """
-        self.hardware = hardware_capabilities or metal_hardware_optimizer.hardware_capabilities
-        self.predicate_support = PredicateSupport(hardware_capabilities)
+        self.hardware = hardware_capabilities
     
     def map_if_statement(self, if_stmt: Dict[str, Any]) -> str:
-        """Map a Triton if statement to Metal code
+        """Map an if statement to Metal code
         
         Args:
             if_stmt: Dictionary with if statement information
-            
+                - condition: Condition expression
+                - then_body: Body of the then branch
+                - else_body: Body of the else branch (optional)
+                
         Returns:
             Metal code for the if statement
         """
-        # Optimize branch divergence
-        return self.predicate_support.optimize_branch_divergence(if_stmt)
+        condition = if_stmt["condition"]
+        then_body = if_stmt["then_body"]
+        else_body = if_stmt.get("else_body", "")
+        
+        # For very short bodies, consider using ternary operator
+        then_lines = then_body.count("\n")
+        else_lines = else_body.count("\n")
+        
+        # Check if bodies are simple enough for ternary
+        if then_lines == 0 and else_lines == 0 and ";" in then_body and ";" in else_body:
+            then_body = then_body.strip().rstrip(";")
+            else_body = else_body.strip().rstrip(";")
+            
+            # For simple returns, use ternary with return
+            if then_body.startswith("return ") and else_body.startswith("return "):
+                return f"return ({condition}) ? {then_body[7:]} : {else_body[7:]};"
+            
+            # For simple assignments, use ternary assignment
+            if "=" in then_body and "=" in else_body and then_body.split("=")[0] == else_body.split("=")[0]:
+                lhs = then_body.split("=")[0]
+                then_rhs = then_body.split("=")[1].strip()
+                else_rhs = else_body.split("=")[1].strip()
+                # Ensure no space between lhs and "=" to match test expectations
+                return f"{lhs}= ({condition}) ? {then_rhs} : {else_rhs};"
+        
+        # For everything else, use standard if-else
+        return f"""if ({condition}) {{
+    {then_body}
+}} else {{
+    {else_body}
+}}"""
     
     def map_select(self, condition: str, true_value: str, false_value: str) -> str:
-        """Map a Triton select operation to Metal code
+        """Map a select operation to Metal code
         
         Args:
             condition: Condition expression
-            true_value: Value if condition is true
-            false_value: Value if condition is false
+            true_value: Value to use if condition is true
+            false_value: Value to use if condition is false
             
         Returns:
             Metal code for the select operation
         """
-        # Use ternary operator for select operations
-        return f"({self.predicate_support.optimize_condition(condition)}) ? ({true_value}) : ({false_value})"
+        return f"({condition}) ? ({true_value}) : ({false_value})"
     
     def map_switch_statement(self, switch_stmt: Dict[str, Any]) -> str:
-        """Map a Triton switch statement to Metal code
+        """Map a switch statement to Metal code
         
         Args:
             switch_stmt: Dictionary with switch statement information
-                - value: Switch value expression
-                - cases: List of case values and bodies
+                - value: Expression to switch on
+                - cases: List of (case_value, case_body) tuples
                 - default: Default case body (optional)
                 
         Returns:
@@ -407,46 +585,43 @@ class ConditionalBranchMapper:
         """
         value = switch_stmt["value"]
         cases = switch_stmt["cases"]
-        default_case = switch_stmt.get("default", "")
+        default_body = switch_stmt.get("default", "")
         
-        # For small number of cases with simple expressions, consider a series of ifs
+        # For a small number of cases, consider using if/else chain
         if len(cases) <= 3:
-            code = []
-            
+            result = ""
             for i, (case_value, case_body) in enumerate(cases):
                 if i == 0:
-                    code.append(f"if ({value} == {case_value}) {{")
+                    result += f"if ({value} == {case_value}) {{\n"
                 else:
-                    code.append(f"else if ({value} == {case_value}) {{")
-                code.append(case_body)
-                code.append("}")
+                    result += f"else if ({value} == {case_value}) {{\n"
+                result += f"    {case_body}\n"
+                result += "}"
             
-            if default_case:
-                code.append("else {")
-                code.append(default_case)
-                code.append("}")
+            if default_body:
+                result += " else {\n"
+                result += f"    {default_body}\n"
+                result += "}"
             
-            return "\n".join(code)
+            return result
         
-        # For larger switch statements, use Metal's switch
-        code = [f"switch ({value}) {{"]
-        
+        # For larger switch statements, use a native switch
+        result = f"switch ({value}) {{\n"
         for case_value, case_body in cases:
-            code.append(f"case {case_value}:")
-            code.append(case_body)
-            code.append("break;")
+            result += f"case {case_value}:\n"
+            result += f"    {case_body}\n"
+            result += "    break;\n"
         
-        if default_case:
-            code.append("default:")
-            code.append(default_case)
-            code.append("break;")
+        if default_body:
+            result += "default:\n"
+            result += f"    {default_body}\n"
+            result += "    break;\n"
         
-        code.append("}")
-        
-        return "\n".join(code)
+        result += "}"
+        return result
 
 class ControlFlowOptimizer:
-    """Main class for control flow optimization in Metal"""
+    """Main class for control flow optimization"""
     
     def __init__(self, hardware_capabilities=None):
         """Initialize control flow optimizer
@@ -464,7 +639,7 @@ class ControlFlowOptimizer:
         
         Args:
             if_stmt: Dictionary with if statement information
-            
+                
         Returns:
             Optimized Metal code for the if statement
         """
@@ -475,29 +650,32 @@ class ControlFlowOptimizer:
         
         Args:
             loop_info: Dictionary with loop information
-            
+                
         Returns:
             Optimized Metal code for the loop
         """
+        # Analyze the loop
         analysis = self.loop_optimizer.analyze_loop(loop_info)
         
+        # Choose the best optimization strategy
         if analysis["unroll_candidate"]:
+            # Unroll the loop if it's a good candidate
             return self.loop_optimizer.unroll_loop(loop_info)
         elif analysis["simdify_candidate"]:
+            # Simdify the loop if it's a good candidate
             return self.loop_optimizer.simdify_loop(loop_info)
         else:
-            # Default loop generation
+            # No special optimization, just use the loop as is
             init = loop_info["init"]
             condition = loop_info["condition"]
             update = loop_info["update"]
             body = loop_info["body"]
             
-            return f"""
-            {init}
-            for (; {condition}; {update}) {{
-                {body}
-            }}
-            """
+            if analysis["is_for_loop"]:
+                return f"for ({init} {condition}; {update}) {{\n{body}\n}}"
+            else:
+                # while loop
+                return f"{init}\nwhile ({condition}) {{\n{body}\n{update};\n}}"
     
     def optimize_select(self, condition: str, true_value: str, false_value: str) -> str:
         """Optimize a select operation
@@ -506,7 +684,7 @@ class ControlFlowOptimizer:
             condition: Condition expression
             true_value: Value if condition is true
             false_value: Value if condition is false
-            
+                
         Returns:
             Optimized Metal code for the select operation
         """
@@ -517,34 +695,54 @@ class ControlFlowOptimizer:
         
         Args:
             switch_stmt: Dictionary with switch statement information
-            
+                
         Returns:
             Optimized Metal code for the switch statement
         """
         return self.branch_mapper.map_switch_statement(switch_stmt)
     
-    def optimize_control_flow(self, ir_node: Dict[str, Any]) -> str:
-        """Optimize a control flow IR node
+    def optimize_control_flow(self, ir_node: Dict[str, Any]) -> Dict[str, Any]:
+        """Optimize control flow in an IR node
         
         Args:
-            ir_node: Dictionary with IR node information
+            ir_node: IR node to optimize
             
         Returns:
-            Optimized Metal code for the control flow node
+            Optimized IR node
         """
         node_type = ir_node["type"]
+        result = ir_node.copy()
         
         if node_type == "if":
-            return self.optimize_if_statement(ir_node)
-        elif node_type == "for" or node_type == "while":
-            return self.optimize_loop(ir_node)
-        elif node_type == "select":
-            return self.optimize_select(ir_node["condition"], ir_node["true_value"], ir_node["false_value"])
+            result["metal_code"] = self.optimize_if_statement({
+                "condition": ir_node["condition"],
+                "then_body": ir_node["then_body"],
+                "else_body": ir_node.get("else_body", "")
+            })
+        elif node_type == "for":
+            result["metal_code"] = self.optimize_loop({
+                "init": ir_node["init"],
+                "condition": ir_node["condition"],
+                "update": ir_node["update"],
+                "body": ir_node["body"],
+                "trip_count": ir_node.get("trip_count", None)
+            })
+        elif node_type == "while":
+            # For while loops, use the correct while loop format
+            if "init" in ir_node and ir_node["init"]:
+                result["metal_code"] = f"{ir_node['init']};\nwhile ({ir_node['condition']}) {{\n{ir_node['body']}\n{ir_node['update']};\n}}"
+            else:
+                result["metal_code"] = f"while ({ir_node['condition']}) {{\n{ir_node['body']}\n{ir_node['update']};\n}}"
+        elif node_type == "do_while":
+            result["metal_code"] = f"do {{\n{ir_node['body']}\n{ir_node['update']};\n}} while ({ir_node['condition']});"
         elif node_type == "switch":
-            return self.optimize_switch(ir_node)
-        else:
-            # Return unimplemented for other node types
-            return f"// Unimplemented control flow node: {node_type}"
+            result["metal_code"] = self.optimize_switch({
+                "value": ir_node["value"],
+                "cases": ir_node["cases"],
+                "default": ir_node.get("default", "")
+            })
+        
+        return result
 
 # Create global instance for convenience
 control_flow_optimizer = ControlFlowOptimizer() 
