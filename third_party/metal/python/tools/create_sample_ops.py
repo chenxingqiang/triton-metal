@@ -8,10 +8,15 @@ including reduction operations that would use the COALESCED memory layout.
 
 import os
 import json
+import random
 import argparse
 
-def generate_sample_ops():
+def generate_sample_ops(seed=None):
     """Generate sample operations for testing"""
+    # Set random seed if provided
+    if seed is not None:
+        random.seed(seed)
+        
     ops = [
         # Reduction operations (will use COALESCED layout)
         {
@@ -65,9 +70,13 @@ def generate_sample_ops():
     
     return ops
 
-def generate_large_sample():
+def generate_large_sample(seed=None):
     """Generate a larger sample with more operations"""
-    ops = generate_sample_ops()
+    # Set random seed if provided
+    if seed is not None:
+        random.seed(seed)
+        
+    ops = generate_sample_ops(seed)
     
     # Add more variations of reduction operations
     additional_ops = [
@@ -154,16 +163,18 @@ def main():
                        help="Output file path (default: sample_ops.json)")
     parser.add_argument("--large", action="store_true",
                        help="Generate a larger sample with more operations")
+    parser.add_argument("--seed", type=int, default=None,
+                       help="Random seed for reproducible generation")
     
     args = parser.parse_args()
     
     # Generate operations
     if args.large:
-        ops = generate_large_sample()
-        print(f"Generating large sample with {len(ops)} operations...")
+        ops = generate_large_sample(args.seed)
+        print(f"Generating large sample with {len(ops)} operations (seed: {args.seed})...")
     else:
-        ops = generate_sample_ops()
-        print(f"Generating basic sample with {len(ops)} operations...")
+        ops = generate_sample_ops(args.seed)
+        print(f"Generating basic sample with {len(ops)} operations (seed: {args.seed})...")
     
     # Create output directory if it doesn't exist
     output_dir = os.path.dirname(args.output)

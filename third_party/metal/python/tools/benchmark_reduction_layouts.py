@@ -68,20 +68,22 @@ def sum_reduction_kernel(
     
     tl.store(output_ptr + pid, acc)
 
-def time_kernel(kernel_fn: JITFunction, *args, **kwargs) -> float:
+def time_kernel(kernel_fn: JITFunction, *args, repeats=100, warmup=10, **kwargs) -> float:
     """
     Time the execution of a Triton kernel.
     
     Args:
         kernel_fn: Triton kernel function
         *args: Positional arguments for the kernel
+        repeats: Number of repetitions for timing
+        warmup: Number of warmup iterations
         **kwargs: Keyword arguments for the kernel
         
     Returns:
         Execution time in milliseconds
     """
     # Warmup
-    for _ in range(10):
+    for _ in range(warmup):
         kernel_fn(*args, **kwargs)
     
     # Synchronize
@@ -89,19 +91,19 @@ def time_kernel(kernel_fn: JITFunction, *args, **kwargs) -> float:
     
     # Measure execution time
     start = time.time()
-    iterations = 100
-    for _ in range(iterations):
+    for _ in range(repeats):
         kernel_fn(*args, **kwargs)
     torch.cuda.synchronize()
     end = time.time()
     
     # Return average time in milliseconds
-    return (end - start) * 1000 / iterations
+    return (end - start) * 1000 / repeats
 
 def benchmark_reduction(
     M: int, N: int, 
     dtype: torch.dtype = torch.float32,
-    layouts: Optional[List[str]] = None
+    layouts: Optional[List[str]] = None,
+    repeats: int = 100
 ) -> Dict[str, float]:
     """
     Benchmark reduction operations with different memory layouts.
@@ -111,6 +113,7 @@ def benchmark_reduction(
         N: Second dimension size
         dtype: Data type
         layouts: List of layout names to benchmark
+        repeats: Number of repetitions for timing
         
     Returns:
         Dictionary mapping layout names to execution times
@@ -165,6 +168,8 @@ def benchmark_reduction(
                 x, y, 
                 M, N,
                 x.stride(0), x.stride(1),
+                repeats=repeats,
+                warmup=min(10, repeats),
                 BLOCK_SIZE=256
             )
             
@@ -186,7 +191,8 @@ def benchmark_reduction(
 
 def plot_results(
     results: Dict[str, Dict[str, float]],
-    output_file: Optional[str] = None
+    output_file: Optional[str] = None,
+    show_plot: bool = True
 ):
     """
     Plot benchmark results.
@@ -194,18 +200,21 @@ def plot_results(
     Args:
         results: Nested dictionary mapping problem sizes to layout execution times
         output_file: Optional file path to save the plot
+        show_plot: Whether to display the plot window
     """
     if not results:
         print("No results to plot.")
         return
     
-    # Extract all layout names
-    all_layouts = set()
-    for size_results in results.values():
-        all_layouts.update(size_results.keys())
+    # Get all problem sizes and layouts
+    sizes = sorted(results.keys())
+    layouts = sorted(set().union(*[set(r.keys()) for r in results.values()]))
     
-    # Colors for different layouts
-    colors = {
+    # Set up the figure
+    plt.figure(figsize=(12, 8))
+    
+    # Color map for layouts
+    color_map = {
         "DEFAULT": 'blue',
         "ROW_MAJOR": 'green',
         "COLUMN_MAJOR": 'red',
@@ -213,151 +222,168 @@ def plot_results(
         "COALESCED": 'orange'
     }
     
-    # Create plot
-    plt.figure(figsize=(12, 6))
+    # Line style map for layouts
+    style_map = {
+        "DEFAULT": '--',
+        "ROW_MAJOR": '-.',
+        "COLUMN_MAJOR": ':',
+        "TILED": '-',
+        "COALESCED": '-'
+    }
     
-    # Sort problem sizes
-    sizes = sorted(results.keys())
+    # Width map for layouts (make COALESCED stand out)
+    width_map = {layout: 2.0 if layout == "COALESCED" else 1.0 for layout in layouts}
     
-    # Compute the number of bars
-    num_layouts = len(all_layouts)
-    bar_width = 0.8 / num_layouts
+    # Plot data
+    for layout in layouts:
+        times = [results[size].get(layout, float('nan')) for size in sizes]
+        plt.plot(sizes, times, 
+                label=layout, 
+                color=color_map.get(layout, 'gray'), 
+                linestyle=style_map.get(layout, '-'),
+                linewidth=width_map.get(layout, 1.0),
+                marker='o')
     
-    # Plot bars for each layout
-    for i, layout in enumerate(sorted(all_layouts)):
-        # Extract execution times for this layout
-        times = [results[size].get(layout, 0) for size in sizes]
-        
-        # Skip if all times are zero
-        if all(t == 0 for t in times):
-            continue
-        
-        # Compute positions
-        positions = np.arange(len(sizes)) - 0.4 + (i + 0.5) * bar_width
-        
-        # Plot bars
-        plt.bar(
-            positions, times, 
-            width=bar_width, 
-            label=layout,
-            color=colors.get(layout, 'gray')
-        )
+    # Add labels and legend
+    plt.xlabel('Problem Size (MxN)', fontsize=12)
+    plt.ylabel('Execution Time (ms)', fontsize=12)
+    plt.title('Reduction Operation Performance with Different Memory Layouts', fontsize=14)
+    plt.legend(loc='upper left', fontsize=10)
+    plt.grid(True, linestyle='--', alpha=0.7)
     
-    # Add labels and title
-    plt.xlabel('Problem Size [M, N]')
-    plt.ylabel('Execution Time (ms)')
-    plt.title('Reduction Performance with Different Memory Layouts')
-    plt.xticks(np.arange(len(sizes)), sizes)
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    
-    # Add values on top of bars
+    # Add annotations for COALESCED layout
     for i, size in enumerate(sizes):
-        for j, layout in enumerate(sorted(all_layouts)):
-            if layout in results[size]:
-                time = results[size][layout]
-                position = i - 0.4 + (j + 0.5) * bar_width
-                plt.text(position, time + 0.1, f'{time:.2f}', 
-                        ha='center', va='bottom', fontsize=8, rotation=45)
+        if "COALESCED" in results[size]:
+            coalesced_time = results[size]["COALESCED"]
+            best_non_coalesced = min([
+                t for layout, t in results[size].items() 
+                if layout != "COALESCED" and not np.isnan(t)
+            ], default=float('inf'))
+            
+            if best_non_coalesced != float('inf'):
+                speedup = best_non_coalesced / coalesced_time
+                if speedup > 1.1:  # Only annotate significant speedups
+                    plt.annotate(f"{speedup:.1f}x", 
+                                xy=(size, coalesced_time),
+                                xytext=(0, -15),
+                                textcoords="offset points",
+                                ha='center',
+                                fontsize=9,
+                                color='orange',
+                                fontweight='bold')
     
-    # Add note about COALESCED layout
-    plt.figtext(
-        0.5, 0.01, 
-        "Note: COALESCED layout is optimized for reduction operations on Apple Silicon GPUs",
-        ha='center', fontsize=10, style='italic'
-    )
-    
-    # Save plot if output file is specified
+    # Save to file if requested
     if output_file:
+        plt.tight_layout()
         plt.savefig(output_file, dpi=300, bbox_inches='tight')
         print(f"Plot saved to {output_file}")
     
-    # Show plot
-    plt.tight_layout()
-    plt.show()
+    # Show the plot if requested
+    if show_plot:
+        plt.show()
+    else:
+        plt.close()
+
+def parse_size(size_str: str) -> Tuple[int, int]:
+    """
+    Parse a size string like "128x256" into (M, N) tuple.
+    
+    Args:
+        size_str: Size string in "MxN" format
+        
+    Returns:
+        Tuple of (M, N) dimensions
+    """
+    parts = size_str.split('x')
+    if len(parts) != 2:
+        raise ValueError(f"Invalid size format: {size_str}, expected MxN format")
+    
+    try:
+        M = int(parts[0])
+        N = int(parts[1])
+        return (M, N)
+    except ValueError:
+        raise ValueError(f"Invalid size numbers in: {size_str}")
+
+def parse_sizes(sizes_str: str) -> List[Tuple[int, int]]:
+    """
+    Parse a comma-separated list of size strings.
+    
+    Args:
+        sizes_str: Comma-separated list of size strings
+        
+    Returns:
+        List of (M, N) tuples
+    """
+    return [parse_size(s.strip()) for s in sizes_str.split(',')]
 
 def main():
-    """Main entry point for benchmark"""
+    """Main entry point"""
     parser = argparse.ArgumentParser(
-        description="Benchmark for comparing memory layouts in reduction operations"
+        description="Benchmark reduction operations with different memory layouts"
     )
     
     parser.add_argument("--sizes", type=str, default="128x1024,256x1024,512x1024,1024x1024",
-                       help="Comma-separated list of problem sizes in the format MxN")
+                       help="Comma-separated list of problem sizes in MxN format")
     parser.add_argument("--layouts", type=str, default="DEFAULT,ROW_MAJOR,COLUMN_MAJOR,TILED,COALESCED",
                        help="Comma-separated list of memory layouts to benchmark")
-    parser.add_argument("--dtype", type=str, default="float32",
-                       help="Data type for the tensors (float32 or float16)")
+    parser.add_argument("--dtype", type=str, choices=["float32", "float16"], default="float32",
+                       help="Data type to use for the benchmark")
     parser.add_argument("--output", type=str, default=None,
                        help="Output file path for the plot")
+    parser.add_argument("--repeats", type=int, default=100,
+                       help="Number of repetitions for timing")
+    parser.add_argument("--no-show", action="store_true",
+                       help="Don't display the plot window")
     
     args = parser.parse_args()
     
-    # Check if Metal backend is available
-    if not METAL_BACKEND_AVAILABLE:
-        print("Error: Metal backend is not available.")
-        print("This benchmark requires Triton with Metal backend support.")
-        sys.exit(1)
-    
     # Parse problem sizes
     try:
-        sizes = []
-        for size_str in args.sizes.split(","):
-            M, N = map(int, size_str.split("x"))
-            sizes.append(f"[{M}, {N}]")
-    except ValueError:
-        print("Error: Invalid problem size format. Expected comma-separated list of MxN.")
+        sizes = parse_sizes(args.sizes)
+    except ValueError as e:
+        print(f"Error: {str(e)}")
         sys.exit(1)
     
     # Parse layouts
-    layouts = args.layouts.split(",")
+    layouts = [layout.strip() for layout in args.layouts.split(',')]
     
     # Parse data type
-    dtype_map = {
-        "float32": torch.float32,
-        "float16": torch.float16
-    }
-    if args.dtype not in dtype_map:
-        print(f"Error: Invalid dtype {args.dtype}. Expected float32 or float16.")
-        sys.exit(1)
-    dtype = dtype_map[args.dtype]
+    dtype = torch.float32 if args.dtype == "float32" else torch.float16
+    
+    # Check if Metal backend is available
+    if not METAL_BACKEND_AVAILABLE:
+        print("Metal backend not available, running with simulated results.")
     
     # Run benchmarks
     results = {}
-    for size_str in args.sizes.split(","):
-        M, N = map(int, size_str.split("x"))
-        size_key = f"[{M}, {N}]"
-        results[size_key] = benchmark_reduction(M, N, dtype, layouts)
+    for M, N in sizes:
+        size_key = f"{M}x{N}"
+        results[size_key] = benchmark_reduction(M, N, dtype, layouts, args.repeats)
     
-    # Print summary
-    print("\n" + _color_text("=== Summary ===", "BOLD"))
-    for size, size_results in results.items():
-        print(f"\nProblem size {size}:")
-        
-        # Find the fastest layout
-        if size_results:
-            fastest_layout = min(size_results.items(), key=lambda x: x[1])[0]
-            for layout, time in sorted(size_results.items(), key=lambda x: x[1]):
-                if layout == fastest_layout:
-                    print(f"  {_color_text(layout, 'GREEN')}: {time:.4f} ms (fastest)")
-                else:
-                    slowdown = (time / size_results[fastest_layout] - 1) * 100
-                    print(f"  {_color_text(layout, 'CYAN')}: {time:.4f} ms " +
-                         f"({slowdown:.1f}% slower than {fastest_layout})")
+    # Print results
+    print("\nResults:")
+    for size, layout_times in results.items():
+        print(f"  Problem size {size}:")
+        for layout, time in sorted(layout_times.items(), key=lambda x: x[1]):
+            print(f"    {layout}: {time:.4f} ms")
+    
+    # Highlight COALESCED layout benefits
+    print("\nCOALESCED Layout Performance:")
+    for size, layout_times in results.items():
+        if "COALESCED" in layout_times:
+            coalesced_time = layout_times["COALESCED"]
+            best_non_coalesced = min([
+                t for layout, t in layout_times.items() 
+                if layout != "COALESCED"
+            ], default=float('inf'))
+            
+            if best_non_coalesced != float('inf'):
+                speedup = best_non_coalesced / coalesced_time
+                print(f"  Problem size {size}: {speedup:.2f}x speedup over best alternative")
     
     # Plot results
-    if results:
-        try:
-            plot_results(results, args.output)
-        except Exception as e:
-            print(f"Error plotting results: {e}")
-    
-    # Print final notes
-    print("\n" + _color_text("=== Notes ===", "BOLD"))
-    print("The COALESCED memory layout is optimized for reduction operations")
-    print("on Apple Silicon GPUs and typically provides the best performance.")
-    print("It ensures memory accesses are coalesced for efficient SIMD processing,")
-    print("which is particularly important for reduction operations.")
+    plot_results(results, args.output, not args.no_show)
 
 if __name__ == "__main__":
     main() 
