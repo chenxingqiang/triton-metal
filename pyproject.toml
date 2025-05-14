@@ -2,6 +2,65 @@
 requires = ["setuptools>=40.8.0", "cmake>=3.18", "ninja>=1.11.1", "pybind11>=2.13.1"]
 build-backend = "setuptools.build_meta"
 
+[project]
+name = "triton-matel"
+version = "3.3.0+metal"
+description = "Enhanced Triton with Metal backend for Apple Silicon GPUs"
+readme = "README.md"
+authors = [
+    {name = "Cheng Xingqiang", email = "chengxingqiang@example.com"}
+]
+license = {file = "LICENSE.metal"}
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Operating System :: MacOS :: MacOS X",
+]
+keywords = ["deep learning", "compiler", "metal", "apple silicon", "m3"]
+requires-python = ">=3.9,<3.14"
+dependencies = [
+    "setuptools>=40.8.0",
+    "importlib-metadata; python_version < '3.10'",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/chengxingqiang/triton-matel"
+"Bug Tracker" = "https://github.com/chengxingqiang/triton-matel/issues"
+"Documentation" = "https://github.com/chengxingqiang/triton-matel/tree/main/docs"
+"Source Code" = "https://github.com/chengxingqiang/triton-matel"
+
+[project.optional-dependencies]
+build = [
+    "cmake>=3.20",
+    "lit",
+]
+tests = [
+    "autopep8",
+    "isort",
+    "numpy",
+    "pytest",
+    "pytest-forked",
+    "pytest-xdist",
+    "scipy>=1.7.1",
+    "llnl-hatchet",
+]
+tutorials = [
+    "matplotlib",
+    "pandas",
+    "tabulate",
+]
+metal = [
+    "mlx>=0.3.0",
+]
+
 [tool.mypy]
 mypy_path = "$MYPY_CONFIG_FILE_DIR/python"
 files = [

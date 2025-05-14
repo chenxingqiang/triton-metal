@@ -312,3 +312,73 @@ the [triton-dev-containers repository](https://github.com/redhat-et/triton-dev-c
 
 For detailed instructions on how to use the dev containers please see
 the [dev container user guide](https://github.com/redhat-et/triton-dev-containers/blob/main/.devcontainer/devcontainer.md)
+
+## Metal Backend for Apple Silicon
+
+Triton now includes a Metal backend that enables running Triton kernels on Apple Silicon GPUs (M1, M2, and M3 chips) via the [MLX](https://github.com/ml-explore/mlx) framework.
+
+### Installation
+
+The Metal backend is automatically included when installing Triton on macOS with Apple Silicon. You can also explicitly enable it on any platform by setting the `TRITON_BUILD_WITH_METAL` environment variable:
+
+```bash
+# Install Triton with Metal backend
+TRITON_BUILD_WITH_METAL=ON pip install -e .
+# Or with extras for Metal dependencies (MLX)
+pip install -e ".[metal]"
+```
+
+### Requirements
+
+- macOS 13.5 or higher
+- Apple Silicon Mac (M1/M2/M3)
+- MLX 0.3.0 or higher
+
+### M3-Specific Optimizations
+
+The Metal backend includes specialized optimizations for M3 chips that leverage:
+- 64KB of shared memory (vs 32KB on M1/M2)
+- 8-wide vectorization (vs 4-wide on M1/M2)
+- Tensor cores for matrix operations
+- Enhanced SIMD operations (32-wide vs 16-wide)
+- Dynamic register caching
+
+These optimizations are automatically applied when running on M3 hardware.
+
+### Usage
+
+To use the Metal backend:
+
+```python
+import os
+os.environ["TRITON_BACKEND"] = "metal"  # Set this before importing Triton
+
+import triton
+import triton.language as tl
+
+# Your Triton code here
+```
+
+See the [Metal documentation](metal/python/docs/) and [examples](third_party/metal/python/examples/) for more details.
+
+# Triton-Matel: Enhanced Metal Backend for Triton
+
+This is Cheng Xingqiang's fork of Triton with enhanced Metal backend support for Apple Silicon GPUs. The focus of this repository is to provide optimized performance for ML workloads on M1, M2, and especially M3 chips.
+
+## Key Features
+
+- Full MLX integration for efficient Metal execution
+- M3-specific optimizations leveraging 64KB shared memory
+- 8-wide vectorization support for M3 chips
+- Tensor core utilization for matrix operations
+- Enhanced SIMD operations (32-wide vs 16-wide on M1/M2)
+- Automatic hardware detection and optimization
+
+## Installation
+
+```bash
+# Install from source with Metal support
+git clone https://github.com/chengxingqiang/triton-matel.git
+cd triton-matel
+pip install -e ".[metal]"
+```

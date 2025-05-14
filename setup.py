@@ -589,7 +589,22 @@ def download_and_copy_dependencies():
     )
 
 
-backends = [*BackendInstaller.copy(["nvidia", "amd"]), *BackendInstaller.copy_externals()]
+# Determine if we should include the Metal backend
+def is_apple_silicon():
+    if platform.system() != "Darwin":
+        return False
+    # Check if running on Apple Silicon
+    return platform.machine() in ["arm64", "aarch64"]
+
+# Include Metal backend only on macOS with Apple Silicon
+# or if explicitly requested with TRITON_BUILD_WITH_METAL env var
+build_with_metal = check_env_flag("TRITON_BUILD_WITH_METAL", "OFF") or is_apple_silicon()
+default_backends = ["nvidia", "amd"]
+if build_with_metal:
+    default_backends.append("metal")
+    print("Including Metal backend for Apple Silicon")
+
+backends = [*BackendInstaller.copy(default_backends), *BackendInstaller.copy_externals()]
 
 
 def get_package_dirs():
@@ -759,7 +774,7 @@ def get_git_version_suffix():
 
 
 # keep it separate for easy substitution
-TRITON_VERSION = "3.3.0" + get_git_version_suffix() + os.environ.get("TRITON_WHEEL_VERSION_SUFFIX", "")
+TRITON_VERSION = "3.3.0+metal" + get_git_version_suffix() + os.environ.get("TRITON_WHEEL_VERSION_SUFFIX", "")
 
 # Dynamically define supported Python versions and classifiers
 MIN_PYTHON = (3, 9)
@@ -778,12 +793,12 @@ PYTHON_CLASSIFIERS = [
 CLASSIFIERS = BASE_CLASSIFIERS + PYTHON_CLASSIFIERS
 
 setup(
-    name=os.environ.get("TRITON_WHEEL_NAME", "triton"),
+    name=os.environ.get("TRITON_WHEEL_NAME", "triton-matel"),
     version=TRITON_VERSION,
-    author="Philippe Tillet",
-    author_email="phil@openai.com",
-    description="A language and compiler for custom Deep Learning operations",
-    long_description="",
+    author="Cheng Xingqiang",
+    author_email="chengxingqiang@example.com",
+    description="A Metal backend for Triton on Apple Silicon GPUs",
+    long_description="Triton with enhanced Metal backend for Apple Silicon GPUs, supporting M1, M2, and M3 chips with optimized performance.",
     install_requires=[
         "setuptools>=40.8.0",
         "importlib-metadata; python_version < '3.10'",
@@ -806,8 +821,8 @@ setup(
     },
     zip_safe=False,
     # for PyPI
-    keywords=["Compiler", "Deep Learning"],
-    url="https://github.com/triton-lang/triton/",
+    keywords=["Compiler", "Deep Learning", "Metal", "Apple Silicon", "M3"],
+    url="https://github.com/chengxingqiang/triton-matel/",
     python_requires=PYTHON_REQUIRES,
     classifiers=CLASSIFIERS,
     test_suite="tests",
@@ -830,6 +845,9 @@ setup(
             "matplotlib",
             "pandas",
             "tabulate",
+        ],
+        "metal": [
+            "mlx>=0.3.0",
         ],
     },
 )
