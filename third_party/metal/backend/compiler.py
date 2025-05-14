@@ -10,21 +10,93 @@ import sys
 import json
 import subprocess
 import hashlib
+import time
+
+# Add Python directory to path for Metal-specific modules
+metal_python_dir = os.path.join(os.path.dirname(__file__), '..', 'python')
+if metal_python_dir not in sys.path:
+    sys.path.insert(0, metal_python_dir)
+
+try:
+    # Import hardware detection
+    from metal_hardware_optimizer import hardware_capabilities, AppleSiliconGeneration
+
+    # Import optimizers
+    try:
+        # Import our optimizers 
+        import mlx_graph_optimizer
+        import metal_memory_manager
+        
+        has_optimizers = True
+    except ImportError:
+        print("Warning: MLX Graph Optimizer modules not available. Advanced optimizations will be disabled.")
+        has_optimizers = False
+except ImportError:
+    print("Warning: Metal hardware detection not available. Hardware-specific optimizations will be disabled.")
+    has_optimizers = False
 
 @dataclass
 class MetalOptions:
-    """Metal compilation options"""
-    arch: str = "apple-silicon"
-    num_warps: int = 4
-    num_ctas: int = 1
-    enable_fp_fusion: bool = True
-    max_shared_memory: int = 65536  # 64KB
-    opt_level: int = 3  # Optimization level
-    enable_interleaving: bool = True  # Enable instruction interleaving
-    vectorize: bool = True  # Enable vectorization
-    mlx_shard_size: int = 128  # Default shard size for MLX ops
-    debug_info: bool = False  # Include debug info
+    """Metal backend compilation options"""
     
+    def __init__(self, 
+                num_warps: int = 4,
+                num_ctas: int = 1,
+                debug_info: bool = False,
+                opt_level: int = 3,
+                arch: str = "",
+                max_shared_memory: int = 0,
+                mlx_shard_size: int = 128,
+                enable_fp_fusion: bool = True,
+                enable_interleaving: bool = True,
+                vectorize: bool = True,
+                **kwargs):
+        """
+        Initialize Metal options
+        
+        Args:
+            num_warps: Number of warps per threadgroup
+            num_ctas: Number of concurrent thread groups
+            debug_info: Enable debug info generation
+            opt_level: Optimization level (0-3)
+            arch: Target architecture (e.g., "m1", "m2")
+            max_shared_memory: Maximum shared memory in bytes (0 = use default)
+            mlx_shard_size: Shard size for MLX operations
+            enable_fp_fusion: Enable fusion of floating-point operations
+            enable_interleaving: Enable memory access interleaving
+            vectorize: Enable vectorization
+            kwargs: Additional options
+        """
+        self.num_warps = num_warps
+        self.num_ctas = num_ctas
+        self.debug_info = debug_info
+        self.opt_level = opt_level
+        self.arch = arch
+        self.max_shared_memory = max_shared_memory
+        self.mlx_shard_size = mlx_shard_size
+        self.enable_fp_fusion = enable_fp_fusion
+        self.enable_interleaving = enable_interleaving
+        self.vectorize = vectorize
+        
+        # Store any additional options
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert options to dictionary"""
+        return {
+            "num_warps": self.num_warps,
+            "num_ctas": self.num_ctas,
+            "debug_info": self.debug_info,
+            "opt_level": self.opt_level,
+            "arch": self.arch,
+            "max_shared_memory": self.max_shared_memory,
+            "mlx_shard_size": self.mlx_shard_size,
+            "enable_fp_fusion": self.enable_fp_fusion,
+            "enable_interleaving": self.enable_interleaving,
+            "vectorize": self.vectorize
+        }
+
 class MetalBackend(BaseBackend):
     """Triton Metal backend implementation"""
     
@@ -39,8 +111,10 @@ class MetalBackend(BaseBackend):
         self._converter = None
         self._driver = None
         
-        # Import instrumentation
+        # Import instrumentation and auto-tuner
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'python'))
+        
+        # Initialize instrumentation
         try:
             import metal_instrumentation
             self.instrumentation = metal_instrumentation.get_metal_instrumentation()
@@ -51,6 +125,16 @@ class MetalBackend(BaseBackend):
             self.has_instrumentation = False
             self.instrumentation = None
             self.error_diagnostics = None
+            
+        # Initialize auto-tuner
+        try:
+            import metal_auto_tuner
+            self.auto_tuner_module = metal_auto_tuner
+            self.has_auto_tuner = True
+        except ImportError:
+            print("Warning: metal_auto_tuner module not found. Auto-tuning will be disabled.")
+            self.has_auto_tuner = False
+            self.auto_tuner_module = None
         
     @property
     def mlx(self):
@@ -175,6 +259,13 @@ class MetalBackend(BaseBackend):
                 metadata["num_ctas"] = options.num_ctas
                 metadata["max_shared_memory"] = options.max_shared_memory
                 
+                # Add M3-specific parameters if available
+                if has_optimizers and hasattr(hardware_capabilities, "chip_generation"):
+                    if hardware_capabilities.chip_generation == AppleSiliconGeneration.M3:
+                        # Add M3-specific metadata
+                        metadata["chip_generation"] = "M3"
+                        metadata["m3_optimizations_enabled"] = True
+                
             return src
         except Exception as e:
             import traceback
@@ -218,6 +309,26 @@ class MetalBackend(BaseBackend):
                 has_ir_transforms = False
                 print("Warning: metal_ir_transforms module not found. Using basic conversion without Metal-specific optimizations.")
             
+            # Import MLX graph optimizer
+            try:
+                from mlx_graph_optimizer import MLXGraphOptimizer
+                has_graph_optimizer = True
+            except ImportError:
+                has_graph_optimizer = False
+                print("Warning: mlx_graph_optimizer module not found. Graph optimization will be disabled.")
+            
+            # Try to import M3-specific optimizers if on M3 hardware
+            has_m3_optimizers = False
+            if has_optimizers and hasattr(hardware_capabilities, "chip_generation"):
+                if hardware_capabilities.chip_generation == AppleSiliconGeneration.M3:
+                    try:
+                        import m3_graph_optimizer
+                        import m3_memory_manager
+                        has_m3_optimizers = True
+                        print("M3 hardware detected. Using M3-specific optimizations.")
+                    except ImportError:
+                        print("Warning: M3-specific optimization modules not found. Using generic optimizations for M3.")
+            
             # First, parse the IR to a format that can be transformed
             parsed_ir = self._parse_ir_for_transform(src)
             
@@ -240,6 +351,10 @@ class MetalBackend(BaseBackend):
                         
                         # Apply transformations
                         transformed_ir, transform_summary = metal_ir_transforms.transform_ir(parsed_ir, transform_metadata)
+                        
+                        # Store transformation summary in metadata
+                        if metadata is not None:
+                            metadata["transform_summary"] = transform_summary
                 else:
                     # Add compilation options to metadata for the transformations
                     transform_metadata = metadata.copy() if metadata else {}
@@ -281,10 +396,83 @@ class MetalBackend(BaseBackend):
                     shard_size=options.mlx_shard_size
                 )
             
+            # Apply MLX graph optimization if available
+            if has_graph_optimizer and isinstance(mlx_ir, dict):
+                if self.has_instrumentation:
+                    with self.instrumentation.timer("graph_optimization"):
+                        # Apply graph optimizations
+                        optimized_mlx_ir, opt_stats = mlx_graph_optimizer.optimize(mlx_ir)
+                        
+                        # Store optimization stats in metadata
+                        if metadata is not None:
+                            metadata["graph_optimization"] = opt_stats
+                else:
+                    # Apply graph optimizations
+                    optimized_mlx_ir, opt_stats = mlx_graph_optimizer.optimize(mlx_ir)
+                    
+                    # Store optimization stats in metadata
+                    if metadata is not None:
+                        metadata["graph_optimization"] = opt_stats
+                
+                # Use the optimized graph
+                mlx_ir = optimized_mlx_ir
+                
+                # Apply M3-specific optimizations if on M3 hardware
+                if has_m3_optimizers:
+                    if self.has_instrumentation:
+                        with self.instrumentation.timer("m3_optimization"):
+                            # Apply M3-specific graph optimizations
+                            optimized_mlx_ir, m3_opt_stats = m3_graph_optimizer.get_m3_graph_optimizer().optimize(mlx_ir)
+                            
+                            # Store M3 optimization stats in metadata
+                            if metadata is not None:
+                                metadata["m3_optimization"] = m3_opt_stats
+                                metadata["optimized_for_m3"] = True
+                    else:
+                        # Apply M3-specific graph optimizations
+                        optimized_mlx_ir, m3_opt_stats = m3_graph_optimizer.get_m3_graph_optimizer().optimize(mlx_ir)
+                        
+                        # Store M3 optimization stats in metadata
+                        if metadata is not None:
+                            metadata["m3_optimization"] = m3_opt_stats
+                            metadata["optimized_for_m3"] = True
+                    
+                    # Use the M3-optimized graph
+                    mlx_ir = optimized_mlx_ir
+                    
+                    # Apply M3-specific memory optimizations
+                    if self.has_instrumentation:
+                        with self.instrumentation.timer("m3_memory_optimization"):
+                            # Optimize memory usage with M3-specific optimizations
+                            mlx_ir = m3_memory_manager.get_m3_memory_manager().optimize_graph_memory(mlx_ir)
+                    else:
+                        # Optimize memory usage with M3-specific optimizations
+                        mlx_ir = m3_memory_manager.get_m3_memory_manager().optimize_graph_memory(mlx_ir)
+                
+                # Apply general memory optimizations if available and not already applied M3-specific ones
+                elif metal_memory_manager and isinstance(mlx_ir, dict) and not has_m3_optimizers:
+                    if self.has_instrumentation:
+                        with self.instrumentation.timer("memory_optimization"):
+                            # Optimize memory usage
+                            mlx_ir = metal_memory_manager.get_metal_memory_manager().optimize_graph_memory(mlx_ir)
+                    else:
+                        # Optimize memory usage
+                        mlx_ir = metal_memory_manager.get_metal_memory_manager().optimize_graph_memory(mlx_ir)
+            
             # Store MLX metadata
             if metadata is not None:
                 metadata["mlx_version"] = self.mlx.__version__
                 metadata["has_custom_ops"] = self.converter.has_custom_ops
+                
+                # Add M3-specific info to metadata if applicable
+                if has_optimizers and hasattr(hardware_capabilities, "chip_generation"):
+                    metadata["chip_generation"] = hardware_capabilities.chip_generation.name
+                    if hardware_capabilities.chip_generation == AppleSiliconGeneration.M3:
+                        metadata["m3_capabilities"] = {
+                            "shared_memory_size": hardware_capabilities.shared_memory_size,
+                            "simd_width": hardware_capabilities.simd_width,
+                            "max_threads_per_threadgroup": hardware_capabilities.max_threads_per_threadgroup
+                        }
                 
             return mlx_ir
         except Exception as e:
@@ -309,33 +497,23 @@ class MetalBackend(BaseBackend):
                 print(error_msg)
             raise RuntimeError(error_msg)
     
-    def _parse_ir_for_transform(self, src):
-        """Parse IR to a format suitable for transformation
+    def _parse_ir_for_transform(self, ir):
+        """Parse IR for transformation
         
         Args:
-            src: Source IR
+            ir: IR to parse
             
         Returns:
-            Parsed IR operations or None if parsing fails
+            Parsed IR
         """
         try:
-            # For now, we'll assume 'src' can be passed to the transformer directly
-            # In a real implementation, this would parse the IR format to the 
-            # expected list of operation dictionaries
+            # For now, we'll assume the IR is a JSON string
+            # In a real implementation, this would parse the Triton IR format
+            # to a format that can be transformed
             
-            # This is a placeholder implementation that could be expanded based on 
-            # the actual IR format received from the previous compilation stage
-            if isinstance(src, str):
-                # Try to parse as JSON if it's a string
-                try:
-                    import json
-                    return json.loads(src)
-                except json.JSONDecodeError:
-                    # Not JSON, might be another format
-                    pass
-            
-            # If we can't parse the IR, return None to skip transformations
-            return None
+            # This is a placeholder implementation
+            import json
+            return json.loads(ir) if isinstance(ir, str) else ir
         except Exception as e:
             print(f"Warning: Failed to parse IR for transformation: {e}")
             return None
@@ -425,6 +603,11 @@ class MetalBackend(BaseBackend):
                 if metadata is not None:
                     metadata["metal_lib_path"] = str(lib_path)
                     metadata["metal_kernel_name"] = kernel_name
+                    
+                    # Add M3-specific metadata if applicable
+                    if has_optimizers and hasattr(hardware_capabilities, "chip_generation"):
+                        if hardware_capabilities.chip_generation == AppleSiliconGeneration.M3:
+                            metadata["optimized_for_m3"] = True
                 
                 return serialized_graph
         except Exception as e:
@@ -476,4 +659,177 @@ class MetalBackend(BaseBackend):
         
     def get_device_properties(self):
         """Get Metal device properties"""
-        return self.driver.metal_info 
+        props = self.driver.metal_info.copy()
+        
+        # Add M3-specific capabilities if applicable
+        if has_optimizers and hasattr(hardware_capabilities, "chip_generation"):
+            if hardware_capabilities.chip_generation == AppleSiliconGeneration.M3:
+                props["m3_features"] = {
+                    "dynamic_caching": True,
+                    "hardware_ray_tracing": True,
+                    "hardware_mesh_shading": True,
+                    "tensor_cores": True,
+                    "simdgroup_width": 32,
+                    "shared_memory_size": 65536  # 64KB
+                }
+                
+        return props
+        
+    def auto_tune_kernel(self, kernel_name, signature, config_args, config_kwargs, n_trials=100, 
+                       search_strategy="random", kernel_fn=None, parallel=True, num_workers=4):
+        """Auto-tune a kernel with Metal backend
+        
+        Args:
+            kernel_name: Name of the kernel
+            signature: Kernel signature
+            config_args: Config args
+            config_kwargs: Config kwargs
+            n_trials: Number of trials to run
+            search_strategy: Search strategy ("random", "grid", or "bayesian")
+            kernel_fn: Kernel function object
+            parallel: Whether to run evaluations in parallel (default: True)
+            num_workers: Number of worker threads when parallel is True (default: 4)
+            
+        Returns:
+            Best configuration found
+        """
+        if not self.has_auto_tuner:
+            print("Auto-tuning not available. Using default configuration.")
+            return None
+            
+        # Import the module here to avoid circular imports
+        try:
+            from metal_hardware_optimizer import hardware_capabilities
+            
+            # Determine operation type from kernel name and signature
+            operation_type = 'general'
+            
+            # Check for matmul/gemm kernels
+            if any(x in kernel_name.lower() for x in ["matmul", "gemm", "mm", "matrix"]):
+                operation_type = 'matmul'
+                print(f"Detected matrix multiplication kernel: {kernel_name}")
+            # Check for convolution kernels
+            elif any(x in kernel_name.lower() for x in ["conv", "filter", "corr"]):
+                operation_type = 'conv'
+                print(f"Detected convolution kernel: {kernel_name}")
+            # Try to infer from signature
+            elif signature:
+                # Look for patterns in function signature indicating matmul
+                if signature.count('matrix') >= 2 or signature.count('mat') >= 2:
+                    operation_type = 'matmul'
+                    print(f"Inferred matrix multiplication from signature: {signature}")
+                # Look for patterns indicating convolution
+                elif 'conv' in signature or ('filter' in signature and 'kernel' in signature):
+                    operation_type = 'conv'
+                    print(f"Inferred convolution from signature: {signature}")
+            
+            # Get appropriate tunable parameters based on operation type
+            if operation_type == 'matmul':
+                tunable_params = self.auto_tuner_module.get_matmul_metal_params()
+            elif operation_type == 'conv':
+                tunable_params = self.auto_tuner_module.get_conv_metal_params()
+            else:
+                tunable_params = self.auto_tuner_module.get_common_metal_params()
+                
+            # Display hardware information for debugging
+            if self.has_instrumentation:
+                self.instrumentation.record_debug_info(
+                    kernel_name=kernel_name,
+                    source_file="auto_tuning",
+                    line_number=0,
+                    variable_values={
+                        "operation_type": operation_type,
+                        "chip_generation": hardware_capabilities.chip_generation.name,
+                        "n_trials": n_trials,
+                        "search_strategy": search_strategy,
+                        "parallel": parallel,
+                        "num_workers": num_workers
+                    }
+                )
+                
+            # Create auto-tuner
+            tuner = self.auto_tuner_module.MetalAutoTuner(
+                kernel_name,
+                tunable_params,
+                n_trials=n_trials,
+                search_strategy=search_strategy,
+                operation_type=operation_type,
+                use_hardware_optimizer=True
+            )
+            
+            # Define evaluation function that tests the kernel with different configs
+            def evaluate_config(config):
+                # Update kwargs with config
+                updated_kwargs = config_kwargs.copy()
+                updated_kwargs.update(config)
+                
+                try:
+                    # If we have instrumentation, measure performance
+                    if self.has_instrumentation:
+                        with self.instrumentation.timer(f"kernel_{kernel_name}"):
+                            # We'd run the kernel here with the provided config
+                            if kernel_fn:
+                                kernel_fn(*config_args, **updated_kwargs)
+                                
+                        # Get the timing
+                        kernel_time = self.instrumentation.get_last_timer(f"kernel_{kernel_name}")
+                        runtime_ms = kernel_time * 1000 if kernel_time else float("inf")
+                    else:
+                        # Use a simple timer if no instrumentation
+                        start = time.time()
+                        if kernel_fn:
+                            kernel_fn(*config_args, **updated_kwargs)
+                        end = time.time()
+                        runtime_ms = (end - start) * 1000
+                        
+                    # Create configuration result
+                    return self.auto_tuner_module.ConfigurationResult(
+                        config=config,
+                        runtime_ms=runtime_ms,
+                        success=True
+                    )
+                except Exception as e:
+                    # If the kernel fails, return failure
+                    return self.auto_tuner_module.ConfigurationResult(
+                        config=config,
+                        runtime_ms=float("inf"),
+                        success=False,
+                        metrics={"error": str(e)}
+                    )
+                    
+            # Run tuning if kernel_fn is provided
+            if kernel_fn:
+                print(f"Auto-tuning {operation_type} kernel '{kernel_name}' with {search_strategy} strategy")
+                print(f"Hardware: {hardware_capabilities.chip_generation.name}, Running {n_trials} trials")
+                
+                # Adjust num_workers based on hardware
+                if num_workers is None or num_workers <= 0:
+                    # Use 1/2 of available cores by default
+                    num_workers = max(1, hardware_capabilities.num_cores // 2)
+                    
+                best_config = tuner.tune(
+                    evaluate_config,
+                    parallel=parallel,
+                    num_workers=num_workers
+                )
+                
+                # Log the best configuration if instrumentation is available
+                if self.has_instrumentation:
+                    self.instrumentation.record_debug_info(
+                        kernel_name=kernel_name,
+                        source_file="auto_tuned",
+                        line_number=0,
+                        variable_values=best_config
+                    )
+                    
+                print(f"Best configuration for {kernel_name}: {best_config}")
+                return best_config
+            else:
+                # If no kernel function is provided, just return hardware-optimized default config
+                default_config = tuner.get_hardware_optimized_default_config()
+                print(f"No kernel function provided, using hardware-optimized default: {default_config}")
+                return default_config
+                
+        except Exception as e:
+            print(f"Error during auto-tuning: {e}")
+            return None 

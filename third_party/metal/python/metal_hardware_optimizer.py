@@ -224,6 +224,170 @@ class HardwareCapabilities:
             # Default tiles
             return (16, 16, 8)
     
+    def get_auto_tuner_constraints(self, operation_type: str) -> Dict[str, Any]:
+        """
+        Get hardware-specific constraints for auto-tuning
+        
+        Args:
+            operation_type: Type of operation ('matmul', 'conv', 'general')
+            
+        Returns:
+            Dictionary of constraints for auto-tuning
+        """
+        constraints = {}
+        
+        # Common constraints for all operation types
+        constraints['max_threads_per_threadgroup'] = self.max_threads_per_threadgroup
+        constraints['max_threadgroups_per_grid'] = self.max_threadgroups_per_grid
+        constraints['shared_memory_size'] = self.shared_memory_size
+        
+        # Hardware-specific constraints
+        if self.chip_generation == AppleSiliconGeneration.M3:
+            # M3-specific constraints
+            constraints['simd_width'] = 32
+            constraints['max_occupancy'] = 64  # Maximum warps per SM
+            constraints['preferred_vector_width'] = 4
+            constraints['uses_simdgroup_matrix'] = True
+            constraints['optimal_thread_count'] = 512 if operation_type == 'matmul' else 256
+            
+            # Set operation-specific constraints
+            if operation_type == 'matmul':
+                constraints['recommended_block_sizes'] = [(128, 128, 32), (64, 64, 32), (128, 64, 32)]
+                constraints['recommended_num_warps'] = [8, 6, 4]
+                constraints['recommended_num_stages'] = [3, 2]
+                constraints['use_mma'] = True
+            elif operation_type == 'conv':
+                constraints['recommended_block_sizes'] = [(16, 16, 4, 32), (32, 8, 4, 32)]
+                constraints['filter_tile_sizes'] = [3, 5, 7]
+                constraints['recommended_num_warps'] = [4, 8]
+            
+        elif self.chip_generation == AppleSiliconGeneration.M2:
+            # M2-specific constraints
+            constraints['simd_width'] = 32
+            constraints['max_occupancy'] = 48  # Maximum warps per SM
+            constraints['preferred_vector_width'] = 4
+            constraints['uses_simdgroup_matrix'] = True
+            constraints['optimal_thread_count'] = 256
+            
+            # Set operation-specific constraints
+            if operation_type == 'matmul':
+                constraints['recommended_block_sizes'] = [(64, 64, 32), (32, 128, 16), (128, 32, 16)]
+                constraints['recommended_num_warps'] = [4, 6, 8]
+                constraints['recommended_num_stages'] = [2, 3]
+                constraints['use_mma'] = True
+            elif operation_type == 'conv':
+                constraints['recommended_block_sizes'] = [(16, 16, 4, 32), (32, 8, 4, 16)]
+                constraints['filter_tile_sizes'] = [3, 5]
+                constraints['recommended_num_warps'] = [4, 6]
+                
+        elif self.chip_generation == AppleSiliconGeneration.M1:
+            # M1-specific constraints
+            constraints['simd_width'] = 32
+            constraints['max_occupancy'] = 32  # Maximum warps per SM
+            constraints['preferred_vector_width'] = 4
+            constraints['uses_simdgroup_matrix'] = False
+            constraints['optimal_thread_count'] = 256
+            
+            # Set operation-specific constraints
+            if operation_type == 'matmul':
+                constraints['recommended_block_sizes'] = [(32, 32, 16), (64, 32, 16), (32, 64, 16)]
+                constraints['recommended_num_warps'] = [4, 6]
+                constraints['recommended_num_stages'] = [2]
+                constraints['use_mma'] = False
+            elif operation_type == 'conv':
+                constraints['recommended_block_sizes'] = [(16, 16, 4, 16), (16, 8, 4, 16)]
+                constraints['filter_tile_sizes'] = [3]
+                constraints['recommended_num_warps'] = [4]
+        
+        else:
+            # Default constraints for unknown hardware
+            constraints['simd_width'] = 32
+            constraints['max_occupancy'] = 32
+            constraints['preferred_vector_width'] = 4
+            constraints['uses_simdgroup_matrix'] = False
+            constraints['optimal_thread_count'] = 256
+            
+            # Set operation-specific constraints
+            if operation_type == 'matmul':
+                constraints['recommended_block_sizes'] = [(32, 32, 16)]
+                constraints['recommended_num_warps'] = [4]
+                constraints['recommended_num_stages'] = [2]
+                constraints['use_mma'] = False
+            elif operation_type == 'conv':
+                constraints['recommended_block_sizes'] = [(16, 16, 4, 16)]
+                constraints['filter_tile_sizes'] = [3]
+                constraints['recommended_num_warps'] = [4]
+        
+        return constraints
+    
+    def optimize_search_space(self, tunable_params: List, operation_type: str) -> List:
+        """
+        Optimize the search space for auto-tuning based on hardware capabilities
+        
+        Args:
+            tunable_params: List of tunable parameters
+            operation_type: Type of operation ('matmul', 'conv', 'general')
+            
+        Returns:
+            Optimized list of tunable parameters
+        """
+        # Get hardware constraints
+        constraints = self.get_auto_tuner_constraints(operation_type)
+        
+        # Optimize each parameter based on hardware capabilities
+        for param in tunable_params:
+            if param.name == "num_warps":
+                # Adjust num_warps based on hardware
+                if self.chip_generation == AppleSiliconGeneration.M3:
+                    param.default_value = 8
+                    param.max_value = min(param.max_value, 16)
+                elif self.chip_generation == AppleSiliconGeneration.M2:
+                    param.default_value = 6
+                    param.max_value = min(param.max_value, 12)
+                else:
+                    param.default_value = 4
+                    param.max_value = min(param.max_value, 8)
+            
+            elif param.name == "num_stages":
+                # Adjust num_stages based on hardware
+                if self.chip_generation == AppleSiliconGeneration.M3:
+                    param.default_value = 3
+                    param.max_value = min(param.max_value, 5)
+                else:
+                    param.default_value = 2
+                    param.max_value = min(param.max_value, 4)
+            
+            elif param.name == "use_simdgroup_matrix" and operation_type == "matmul":
+                # M1 doesn't support simdgroup matrix operations as efficiently
+                param.default_value = (self.chip_generation != AppleSiliconGeneration.M1)
+            
+            elif param.name in ["block_m", "block_n"] and operation_type == "matmul":
+                if self.chip_generation == AppleSiliconGeneration.M3:
+                    param.default_value = 128
+                    param.max_value = min(param.max_value, 256)
+                elif self.chip_generation == AppleSiliconGeneration.M2:
+                    param.default_value = 64
+                    param.max_value = min(param.max_value, 128)
+                else:
+                    param.default_value = 32
+                    param.max_value = min(param.max_value, 64)
+            
+            elif param.name == "block_k" and operation_type == "matmul":
+                if self.chip_generation == AppleSiliconGeneration.M3:
+                    param.default_value = 32
+                else:
+                    param.default_value = 16
+            
+            elif param.name in ["block_x", "block_y"] and operation_type == "conv":
+                if self.chip_generation == AppleSiliconGeneration.M3:
+                    param.default_value = 32
+                    param.max_value = min(param.max_value, 64)
+                else:
+                    param.default_value = 16
+                    param.max_value = min(param.max_value, 32)
+        
+        return tunable_params
+    
     def __str__(self) -> str:
         """String representation"""
         return (

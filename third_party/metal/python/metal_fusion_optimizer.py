@@ -42,7 +42,7 @@ class FusionPattern:
     Represents a pattern of operations that can be fused together
     """
     
-    def __init__(self, name: str, op_pattern: List[str], min_hardware_gen=None):
+    def __init__(self, name: str, op_pattern: List[str], min_hardware_gen=None, pattern_matcher=None):
         """
         Initialize fusion pattern
         
@@ -50,10 +50,12 @@ class FusionPattern:
             name: Pattern name
             op_pattern: List of operation types that make up the pattern
             min_hardware_gen: Minimum hardware generation required
+            pattern_matcher: Optional function to match more complex patterns
         """
         self.name = name
         self.op_pattern = op_pattern
-        self.min_hardware_gen = min_hardware_gen
+        self.min_hardware_gen = min_hardware_gen if min_hardware_gen is not None else AppleSiliconGeneration.UNKNOWN
+        self.pattern_matcher = pattern_matcher
     
     def matches(self, ops: List[Dict], start_idx: int = 0) -> bool:
         """
@@ -139,7 +141,23 @@ class FusionOptimizer:
             None
         ))
         
-        # Skip M3-specific patterns for now to avoid hardware comparison issues
+        # M3-specific patterns
+        if self.hardware and hasattr(self.hardware, "chip_generation"):
+            # Pattern 6: SwiGLU activation (M3 specific)
+            # SwiGLU: x * sigmoid(gate)
+            if self.hardware.chip_generation == AppleSiliconGeneration.M3:
+                patterns.append(FusionPattern(
+                    "swiglu",
+                    ["linear", "sigmoid", "mul"],
+                    AppleSiliconGeneration.M3
+                ))
+                
+                # Alternative SwiGLU pattern (when linear outputs are already computed)
+                patterns.append(FusionPattern(
+                    "swiglu",
+                    ["sigmoid", "mul"],
+                    AppleSiliconGeneration.M3
+                ))
         
         return patterns
     
@@ -158,9 +176,14 @@ class FusionOptimizer:
         # Iterate through operations looking for patterns
         for i in range(len(ops)):
             for pattern in self.patterns:
-                # Skip hardware-specific patterns for now
+                # Check if this pattern is hardware-specific
                 if pattern.min_hardware_gen is not None:
-                    continue
+                    # Skip if we don't have hardware capabilities
+                    if not self.hardware or not hasattr(self.hardware, "chip_generation"):
+                        continue
+                    # Skip if hardware generation doesn't meet minimum requirement
+                    if self.hardware.chip_generation.value < pattern.min_hardware_gen.value:
+                        continue
                 
                 # Check if pattern matches starting at this position
                 if pattern.matches(ops, i):

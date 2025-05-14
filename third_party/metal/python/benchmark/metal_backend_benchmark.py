@@ -317,61 +317,199 @@ class MetalBackendBenchmark:
     
     def benchmark_attention(self):
         """Benchmark attention mechanism"""
-        print("\nBenchmarking Attention...")
+        print("\nBenchmarking Attention Mechanism...")
         
-        # Test different sizes for attention
-        batch_sizes = [1, 8]
-        seq_lengths = [32, 64]
-        embed_dims = [32, 64]
+        for size in self.sizes:
+            batch_size = 1
+            seq_len = size
+            hidden_dim = 512
+            num_heads = 8
+            head_dim = hidden_dim // num_heads
+            
+            # Create input tensors
+            mlx_q = mx.random.normal((batch_size, seq_len, hidden_dim))
+            mlx_k = mx.random.normal((batch_size, seq_len, hidden_dim))
+            mlx_v = mx.random.normal((batch_size, seq_len, hidden_dim))
+            
+            # Define the MLX function (using nn.MultiHeadAttention for MLX)
+            def mlx_attention(q, k, v):
+                mha = nn.MultiHeadAttention(hidden_dim, num_heads)
+                return mha(q, k, v)
+            
+            # MLX benchmark
+            mlx_time = self._benchmark_mlx(mlx_attention, mlx_q, mlx_k, mlx_v)
+            
+            # PyTorch benchmark
+            torch_time = None
+            if TORCH_AVAILABLE:
+                torch_q = torch.randn((batch_size, seq_len, hidden_dim))
+                torch_k = torch.randn((batch_size, seq_len, hidden_dim))
+                torch_v = torch.randn((batch_size, seq_len, hidden_dim))
+                
+                def torch_scaled_dot_product(q, k, v):
+                    # Manual implementation of scaled dot-product attention
+                    d_k = q.size(-1)
+                    scores = torch.matmul(q, k.transpose(-2, -1)) / (d_k ** 0.5)
+                    attn = torch.nn.functional.softmax(scores, dim=-1)
+                    return torch.matmul(attn, v)
+                
+                torch_time = self._benchmark_torch(torch_scaled_dot_product, torch_q, torch_k, torch_v)
+            
+            # Compute speedup
+            speedup = torch_time / mlx_time if torch_time is not None else None
+            
+            # Store result
+            result = BenchmarkResult(
+                operation="attention",
+                input_shape=(batch_size, seq_len, hidden_dim),
+                mlx_time=mlx_time,
+                torch_time=torch_time,
+                speedup=speedup
+            )
+            self.results.append(result)
+            print(result)
+
+    def benchmark_autotuning(self):
+        """Benchmark auto-tuning effectiveness"""
+        print("\nBenchmarking Auto-Tuning Effectiveness...")
         
-        for batch in batch_sizes:
-            for seq_len in seq_lengths:
-                for dim in embed_dims:
-                    # Create input tensors for MLX
-                    mlx_q = mx.random.normal((batch, seq_len, dim))
-                    mlx_k = mx.random.normal((batch, seq_len, dim))
-                    mlx_v = mx.random.normal((batch, seq_len, dim))
-                    
-                    # MLX benchmark
-                    mlx_time = self._benchmark_mlx(
-                        self.dispatcher._optimized_attention,
-                        mlx_q, mlx_k, mlx_v
-                    )
-                    
-                    # PyTorch benchmark
-                    torch_time = None
-                    if TORCH_AVAILABLE:
-                        # Create a custom scaled dot product attention function
-                        def torch_scaled_dot_product(q, k, v):
-                            d_k = k.size(-1)
-                            scale = 1.0 / (d_k ** 0.5)
-                            attn = torch.matmul(q, k.transpose(-2, -1)) * scale
-                            attn = torch.nn.functional.softmax(attn, dim=-1)
-                            return torch.matmul(attn, v)
-                            
-                        torch_q = torch.randn((batch, seq_len, dim))
-                        torch_k = torch.randn((batch, seq_len, dim))
-                        torch_v = torch.randn((batch, seq_len, dim))
+        # Import auto-tuner
+        try:
+            from metal_auto_tuner import (
+                MetalAutoTuner,
+                TunableParam,
+                ParamType,
+                ConfigurationResult,
+                get_matmul_metal_params
+            )
+            
+            # Create dummy class to hold triton-like interface for testing
+            class DummyTriton:
+                @staticmethod
+                def cdiv(x, y):
+                    return (x + y - 1) // y
+            
+            triton = DummyTriton()
+            
+            # Define simple matrix multiplication function
+            def matmul_untuned(a, b, c, M, N, K):
+                # Simple implementation with fixed parameters
+                block_m, block_n, block_k = 64, 64, 32
+                num_warps = 4
+                num_stages = 2
+                
+                # MLX implementation
+                c[:] = mx.matmul(a, b)
+                return c
+            
+            def matmul_tuned(a, b, c, M, N, K, config=None):
+                # Implementation with tuned parameters
+                if config is None:
+                    block_m, block_n, block_k = 64, 64, 32
+                    num_warps = 4
+                    num_stages = 2
+                else:
+                    block_m = config.get("block_m", 64)
+                    block_n = config.get("block_n", 64)
+                    block_k = config.get("block_k", 32)
+                    num_warps = config.get("num_warps", 4)
+                    num_stages = config.get("num_stages", 2)
+                
+                # Use the dispatcher to find optimized implementation based on config
+                c[:] = self.dispatcher.dispatch_matmul(a, b, hardware_specific_config={
+                    "block_m": block_m,
+                    "block_n": block_n,
+                    "block_k": block_k,
+                    "num_warps": num_warps,
+                    "num_stages": num_stages,
+                    "chip_generation": hardware_capabilities.chip_generation
+                })
+                return c
+            
+            # Create auto-tuner
+            matmul_params = get_matmul_metal_params()
+            
+            for size in [512, 1024, 2048]:
+                M, N, K = size, size, size
+                
+                # Create input and output tensors
+                a_data = mx.random.normal((M, K))
+                b_data = mx.random.normal((K, N))
+                c_untuned = mx.zeros((M, N))
+                c_tuned = mx.zeros((M, N))
+                
+                # Benchmark untuned implementation
+                def run_untuned():
+                    return matmul_untuned(a_data, b_data, c_untuned, M, N, K)
+                
+                untuned_time = self._benchmark_mlx(run_untuned)
+                
+                # Perform auto-tuning
+                print(f"  Auto-tuning matmul for size {M}x{N}x{K}...")
+                tuner = MetalAutoTuner(
+                    f"matmul_{M}_{N}_{K}",
+                    matmul_params,
+                    n_trials=10,  # Limited trials for benchmark
+                    search_strategy="random"
+                )
+                
+                # Define evaluation function
+                def evaluate_config(config):
+                    try:
+                        c_eval = mx.zeros((M, N))
                         
-                        torch_time = self._benchmark_torch(
-                            torch_scaled_dot_product,
-                            torch_q, torch_k, torch_v
+                        # Time the kernel execution with this config
+                        start_time = time.time()
+                        matmul_tuned(a_data, b_data, c_eval, M, N, K, config)
+                        mx.eval(c_eval)
+                        end_time = time.time()
+                        runtime_ms = (end_time - start_time) * 1000
+                        
+                        return ConfigurationResult(
+                            config=config,
+                            runtime_ms=runtime_ms,
+                            success=True
                         )
-                    
-                    # Compute speedup
-                    speedup = torch_time / mlx_time if torch_time is not None else None
-                    
-                    # Store result
-                    result = BenchmarkResult(
-                        operation="attention",
-                        input_shape=(batch, seq_len, dim),
-                        mlx_time=mlx_time,
-                        torch_time=torch_time,
-                        speedup=speedup
-                    )
-                    self.results.append(result)
-                    print(result)
-    
+                    except Exception as e:
+                        return ConfigurationResult(
+                            config=config,
+                            runtime_ms=float("inf"),
+                            success=False,
+                            metrics={"error": str(e)}
+                        )
+                
+                # Run tuning
+                best_config = tuner.tune(evaluate_config, max_trials=10)
+                
+                # Benchmark tuned implementation
+                def run_tuned():
+                    return matmul_tuned(a_data, b_data, c_tuned, M, N, K, best_config)
+                
+                tuned_time = self._benchmark_mlx(run_tuned)
+                
+                # Calculate speedup
+                speedup = untuned_time / tuned_time
+                
+                print(f"  Matrix Size: {M}x{N}x{K}")
+                print(f"  Untuned: {untuned_time:.6f}s")
+                print(f"  Tuned  : {tuned_time:.6f}s")
+                print(f"  Speedup: {speedup:.2f}x")
+                print(f"  Best config: {best_config}")
+                print()
+                
+                # Store result
+                result = BenchmarkResult(
+                    operation="matmul_autotuned",
+                    input_shape=(M, N, K),
+                    mlx_time=tuned_time,
+                    torch_time=untuned_time,  # Reusing this field for untuned time
+                    speedup=speedup
+                )
+                self.results.append(result)
+        
+        except ImportError as e:
+            print(f"  Auto-tuning benchmark skipped: {e}")
+
     def benchmark_all(self):
         """Run all benchmarks"""
         self.benchmark_matmul()
@@ -379,24 +517,8 @@ class MetalBackendBenchmark:
         self.benchmark_reduction()
         self.benchmark_softmax()
         self.benchmark_attention()
-        
-        # Print summary
-        print("\nBenchmark Summary:")
-        print(f"Hardware: {self.device_name}")
-        print(f"Number of runs: {self.runs}")
-        print(f"Number of warmup runs: {self.warmup}")
-        
-        # Compute average speedups
-        valid_speedups = [r.speedup for r in self.results if r.speedup is not None]
-        if valid_speedups:
-            avg_speedup = sum(valid_speedups) / len(valid_speedups)
-            print(f"Average Speedup (PyTorch/MLX): {avg_speedup:.2f}x")
-        
-        # Generate plots if matplotlib is available
-        try:
-            self.generate_plots()
-        except:
-            print("Could not generate plots. Make sure matplotlib is installed.")
+        self.benchmark_autotuning()  # Added auto-tuning benchmark
+        self.generate_plots()
     
     def generate_plots(self):
         """Generate performance comparison plots"""
