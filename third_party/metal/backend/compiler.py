@@ -50,6 +50,9 @@ class MetalOptions:
                 enable_fp_fusion: bool = True,
                 enable_interleaving: bool = True,
                 vectorize: bool = True,
+                memory_optimization: str = "auto",
+                fusion_optimization: str = "auto",
+                metal_optimization_level: str = "auto",
                 **kwargs):
         """
         Initialize Metal options
@@ -65,6 +68,9 @@ class MetalOptions:
             enable_fp_fusion: Enable fusion of floating-point operations
             enable_interleaving: Enable memory access interleaving
             vectorize: Enable vectorization
+            memory_optimization: Memory optimization level ("none", "basic", "hardware_specific", "auto")
+            fusion_optimization: Operation fusion level ("none", "basic", "hardware_specific", "auto")
+            metal_optimization_level: Overall Metal optimization level ("none", "basic", "standard", "aggressive", "experimental", "auto")
             kwargs: Additional options
         """
         self.num_warps = num_warps
@@ -77,6 +83,9 @@ class MetalOptions:
         self.enable_fp_fusion = enable_fp_fusion
         self.enable_interleaving = enable_interleaving
         self.vectorize = vectorize
+        self.memory_optimization = memory_optimization
+        self.fusion_optimization = fusion_optimization
+        self.metal_optimization_level = metal_optimization_level
         
         # Store any additional options
         for key, value in kwargs.items():
@@ -94,7 +103,10 @@ class MetalOptions:
             "mlx_shard_size": self.mlx_shard_size,
             "enable_fp_fusion": self.enable_fp_fusion,
             "enable_interleaving": self.enable_interleaving,
-            "vectorize": self.vectorize
+            "vectorize": self.vectorize,
+            "memory_optimization": self.memory_optimization,
+            "fusion_optimization": self.fusion_optimization,
+            "metal_optimization_level": self.metal_optimization_level
         }
 
 class MetalBackend(BaseBackend):
@@ -396,31 +408,93 @@ class MetalBackend(BaseBackend):
                     shard_size=options.mlx_shard_size
                 )
             
-            # Apply MLX graph optimization if available
-            if has_graph_optimizer and isinstance(mlx_ir, dict):
-                if self.has_instrumentation:
-                    with self.instrumentation.timer("graph_optimization"):
-                        # Apply graph optimizations
-                        optimized_mlx_ir, opt_stats = mlx_graph_optimizer.optimize(mlx_ir)
+            # Apply comprehensive Metal-specific optimizations if available
+            if isinstance(mlx_ir, dict):
+                try:
+                    # Try to import our comprehensive graph optimizer
+                    from metal_optimizing_compiler import (
+                        optimize_for_metal, 
+                        OptimizationLevel
+                    )
+                    
+                    # Determine optimization level based on options
+                    if options.metal_optimization_level == "auto":
+                        # Automatically determine based on opt_level
+                        optimization_level = OptimizationLevel.NONE
+                        if options.opt_level >= 1:
+                            optimization_level = OptimizationLevel.BASIC
+                        if options.opt_level >= 2:
+                            optimization_level = OptimizationLevel.STANDARD
+                        if options.opt_level >= 3:
+                            optimization_level = OptimizationLevel.AGGRESSIVE
+                    else:
+                        # Use explicitly specified level
+                        level_map = {
+                            "none": OptimizationLevel.NONE,
+                            "basic": OptimizationLevel.BASIC,
+                            "standard": OptimizationLevel.STANDARD,
+                            "aggressive": OptimizationLevel.AGGRESSIVE,
+                            "experimental": OptimizationLevel.EXPERIMENTAL
+                        }
+                        optimization_level = level_map.get(options.metal_optimization_level.lower(), OptimizationLevel.STANDARD)
+                    
+                    # Apply optimizations with instrumentation if available
+                    if self.has_instrumentation:
+                        with self.instrumentation.timer("metal_optimization"):
+                            # Apply comprehensive optimizations
+                            optimized_mlx_ir, opt_stats = optimize_for_metal(mlx_ir, optimization_level)
+                            
+                            # Store optimization stats in metadata
+                            if metadata is not None:
+                                metadata["metal_optimization"] = opt_stats
+                    else:
+                        # Apply comprehensive optimizations
+                        optimized_mlx_ir, opt_stats = optimize_for_metal(mlx_ir, optimization_level)
                         
                         # Store optimization stats in metadata
                         if metadata is not None:
-                            metadata["graph_optimization"] = opt_stats
-                else:
-                    # Apply graph optimizations
-                    optimized_mlx_ir, opt_stats = mlx_graph_optimizer.optimize(mlx_ir)
+                            metadata["metal_optimization"] = opt_stats
                     
-                    # Store optimization stats in metadata
-                    if metadata is not None:
-                        metadata["graph_optimization"] = opt_stats
-                
-                # Use the optimized graph
-                mlx_ir = optimized_mlx_ir
-                
-                # Apply M3-specific optimizations if on M3 hardware
-                if has_m3_optimizers:
-                    if self.has_instrumentation:
-                        with self.instrumentation.timer("m3_optimization"):
+                    # Use the optimized graph
+                    mlx_ir = optimized_mlx_ir
+                    
+                except ImportError:
+                    # Fall back to individual optimizations if comprehensive optimizer is not available
+                    print("Warning: metal_optimizing_compiler not found. Falling back to individual optimizations.")
+                    
+                    # Apply MLX graph optimization if available
+                    if has_graph_optimizer:
+                        if self.has_instrumentation:
+                            with self.instrumentation.timer("graph_optimization"):
+                                # Apply graph optimizations
+                                optimized_mlx_ir, opt_stats = mlx_graph_optimizer.optimize(mlx_ir)
+                                
+                                # Store optimization stats in metadata
+                                if metadata is not None:
+                                    metadata["graph_optimization"] = opt_stats
+                        else:
+                            # Apply graph optimizations
+                            optimized_mlx_ir, opt_stats = mlx_graph_optimizer.optimize(mlx_ir)
+                            
+                            # Store optimization stats in metadata
+                            if metadata is not None:
+                                metadata["graph_optimization"] = opt_stats
+                        
+                        # Use the optimized graph
+                        mlx_ir = optimized_mlx_ir
+                    
+                    # Apply M3-specific optimizations if on M3 hardware
+                    if has_m3_optimizers:
+                        if self.has_instrumentation:
+                            with self.instrumentation.timer("m3_optimization"):
+                                # Apply M3-specific graph optimizations
+                                optimized_mlx_ir, m3_opt_stats = m3_graph_optimizer.get_m3_graph_optimizer().optimize(mlx_ir)
+                                
+                                # Store M3 optimization stats in metadata
+                                if metadata is not None:
+                                    metadata["m3_optimization"] = m3_opt_stats
+                                    metadata["optimized_for_m3"] = True
+                        else:
                             # Apply M3-specific graph optimizations
                             optimized_mlx_ir, m3_opt_stats = m3_graph_optimizer.get_m3_graph_optimizer().optimize(mlx_ir)
                             
@@ -428,36 +502,28 @@ class MetalBackend(BaseBackend):
                             if metadata is not None:
                                 metadata["m3_optimization"] = m3_opt_stats
                                 metadata["optimized_for_m3"] = True
-                    else:
-                        # Apply M3-specific graph optimizations
-                        optimized_mlx_ir, m3_opt_stats = m3_graph_optimizer.get_m3_graph_optimizer().optimize(mlx_ir)
                         
-                        # Store M3 optimization stats in metadata
-                        if metadata is not None:
-                            metadata["m3_optimization"] = m3_opt_stats
-                            metadata["optimized_for_m3"] = True
-                    
-                    # Use the M3-optimized graph
-                    mlx_ir = optimized_mlx_ir
-                    
-                    # Apply M3-specific memory optimizations
-                    if self.has_instrumentation:
-                        with self.instrumentation.timer("m3_memory_optimization"):
+                        # Use the M3-optimized graph
+                        mlx_ir = optimized_mlx_ir
+                        
+                        # Apply M3-specific memory optimizations
+                        if self.has_instrumentation:
+                            with self.instrumentation.timer("m3_memory_optimization"):
+                                # Optimize memory usage with M3-specific optimizations
+                                mlx_ir = m3_memory_manager.get_m3_memory_manager().optimize_graph_memory(mlx_ir)
+                        else:
                             # Optimize memory usage with M3-specific optimizations
                             mlx_ir = m3_memory_manager.get_m3_memory_manager().optimize_graph_memory(mlx_ir)
-                    else:
-                        # Optimize memory usage with M3-specific optimizations
-                        mlx_ir = m3_memory_manager.get_m3_memory_manager().optimize_graph_memory(mlx_ir)
-                
-                # Apply general memory optimizations if available and not already applied M3-specific ones
-                elif metal_memory_manager and isinstance(mlx_ir, dict) and not has_m3_optimizers:
-                    if self.has_instrumentation:
-                        with self.instrumentation.timer("memory_optimization"):
+                    
+                    # Apply general memory optimizations if available and not already applied M3-specific ones
+                    elif metal_memory_manager and not has_m3_optimizers:
+                        if self.has_instrumentation:
+                            with self.instrumentation.timer("memory_optimization"):
+                                # Optimize memory usage
+                                mlx_ir = metal_memory_manager.get_metal_memory_manager().optimize_graph_memory(mlx_ir)
+                        else:
                             # Optimize memory usage
                             mlx_ir = metal_memory_manager.get_metal_memory_manager().optimize_graph_memory(mlx_ir)
-                    else:
-                        # Optimize memory usage
-                        mlx_ir = metal_memory_manager.get_metal_memory_manager().optimize_graph_memory(mlx_ir)
             
             # Store MLX metadata
             if metadata is not None:

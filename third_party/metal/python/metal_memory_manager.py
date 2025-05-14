@@ -55,6 +55,7 @@ class MemoryLayout(Enum):
     INTERLEAVED = 5
     SIMD_ALIGNED = 6
     TEXTURE_OPTIMIZED = 7
+    COALESCED = 8
 
 class MemoryAccessPattern(Enum):
     """Enum for memory access patterns"""
