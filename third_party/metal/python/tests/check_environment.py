@@ -8,8 +8,9 @@ Metal backend tests, including required dependencies and hardware.
 import os
 import sys
 import platform
+import subprocess
 import importlib.util
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 
 def check_python_version() -> bool:
     """Check Python version"""
@@ -81,6 +82,107 @@ def check_metal_hardware() -> bool:
         print(f"❌ Error checking Metal hardware: {e}")
         return False
 
+def check_xcode() -> bool:
+    """Check Xcode installation and version"""
+    try:
+        # Check for xcode-select
+        result = subprocess.run(
+            ["xcode-select", "-p"],
+            capture_output=True,
+            text=True,
+            check=False
+        )
+        
+        if result.returncode != 0:
+            print("❌ Xcode command line tools not installed")
+            print("   Install with: xcode-select --install")
+            return False
+        
+        xcode_path = result.stdout.strip()
+        print(f"Xcode path: {xcode_path}")
+        
+        # Check Xcode version
+        result = subprocess.run(
+            ["xcodebuild", "-version"],
+            capture_output=True,
+            text=True,
+            check=False
+        )
+        
+        if result.returncode != 0:
+            print("❌ Xcode not properly installed")
+            return False
+        
+        version_output = result.stdout.strip()
+        print(f"Xcode version: {version_output}")
+        
+        # Extract version
+        version_line = version_output.splitlines()[0]
+        version_str = version_line.split(" ")[-1]
+        
+        try:
+            major_version = int(version_str.split(".")[0])
+            if major_version >= 14:
+                print("✅ Xcode version is sufficient (14+)")
+                return True
+            else:
+                print(f"⚠️ Xcode version may be too old: {version_str}")
+                print("   Recommended: Xcode 14.0 or newer")
+                return False
+        except (ValueError, IndexError):
+            print(f"⚠️ Could not parse Xcode version: {version_str}")
+            return False
+    except FileNotFoundError:
+        print("❌ Xcode tools not found")
+        print("   Install with: xcode-select --install")
+        return False
+    except Exception as e:
+        print(f"❌ Error checking Xcode: {e}")
+        return False
+
+def check_metal_compiler() -> bool:
+    """Check Metal compiler"""
+    try:
+        # Check for metal command line tool
+        result = subprocess.run(
+            ["xcrun", "-f", "metal"],
+            capture_output=True,
+            text=True,
+            check=False
+        )
+        
+        if result.returncode != 0:
+            print("❌ Metal compiler not found")
+            return False
+        
+        metal_path = result.stdout.strip()
+        print(f"Metal compiler: {metal_path}")
+        
+        # Check metal version
+        result = subprocess.run(
+            ["xcrun", "metal", "--version"],
+            capture_output=True,
+            text=True,
+            check=False
+        )
+        
+        if result.returncode != 0:
+            print(f"⚠️ Could not determine Metal compiler version")
+            return False
+        
+        version_output = result.stdout.strip()
+        print(f"Metal version: {version_output}")
+        
+        # We don't fail on specific Metal version, just report it
+        print("✅ Metal compiler is available")
+        return True
+    except FileNotFoundError:
+        print("❌ Metal compiler not found")
+        return False
+    except Exception as e:
+        print(f"❌ Error checking Metal compiler: {e}")
+        return False
+
 def check_metal_backend() -> bool:
     """Check Metal backend installation"""
     # Check for Metal backend modules
@@ -131,14 +233,23 @@ def main():
     # Check Metal hardware
     metal_hw_ok = check_metal_hardware()
     
+    # Check Xcode and toolchain
+    print("\n=== Development Tools ===")
+    xcode_ok = check_xcode()
+    metal_compiler_ok = check_metal_compiler()
+    
     # Check Metal backend
     print("\n=== Metal Backend ===")
     metal_backend_ok = check_metal_backend()
     
     # Print summary
     print("\n=== Summary ===")
-    num_passed = sum(1 for x in [python_ok, numpy_ok, matplotlib_ok, mlx_ok, os_ok, metal_hw_ok, metal_backend_ok] if x)
-    num_total = 7
+    num_passed = sum(1 for x in [
+        python_ok, numpy_ok, matplotlib_ok, mlx_ok, 
+        os_ok, metal_hw_ok, xcode_ok, metal_compiler_ok, 
+        metal_backend_ok
+    ] if x)
+    num_total = 9
     
     print(f"Passed: {num_passed}/{num_total} checks")
     
@@ -147,6 +258,26 @@ def main():
         return 0
     else:
         print("❌ Environment is not correctly set up for Metal backend tests")
+        print("\nMissing requirements:")
+        if not python_ok:
+            print("- Python 3.8+ is required")
+        if not numpy_ok:
+            print("- NumPy is required: pip install numpy")
+        if not matplotlib_ok:
+            print("- Matplotlib is required: pip install matplotlib")
+        if not mlx_ok:
+            print("- MLX is required: pip install mlx")
+        if not os_ok:
+            print("- Apple Silicon Mac is required")
+        if not metal_hw_ok:
+            print("- Metal hardware support is required")
+        if not xcode_ok:
+            print("- Xcode 14+ is required: Install from App Store or xcode-select --install")
+        if not metal_compiler_ok:
+            print("- Metal compiler is required: Install Xcode with Metal support")
+        if not metal_backend_ok:
+            print("- Metal backend modules need to be properly installed")
+        
         return 1
 
 if __name__ == "__main__":
