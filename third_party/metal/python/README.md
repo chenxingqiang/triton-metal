@@ -490,6 +490,21 @@ On M3 hardware, these optimizations can provide significant performance improvem
 
 This directory contains tools for checking and verifying compatibility of your system with the Triton Metal backend, with a focus on Apple Silicon (particularly M3+) compatibility and support for optimized memory layouts.
 
+## Interactive Tutorial
+
+The `tutorial_metal_compatibility.py` script provides a comprehensive interactive tutorial that:
+- Checks your system compatibility with the Metal backend
+- Detects and explains M3-specific optimizations
+- Demonstrates memory layout optimizations for Apple Silicon
+- Includes a simple example to verify functionality
+
+To run the tutorial:
+```bash
+python tutorial_metal_compatibility.py
+```
+
+See [tutorial_README.md](tutorial_README.md) for more information.
+
 ## System Compatibility Check
 
 The `check_system.py` script verifies if your system meets all the requirements to run the Triton Metal backend with optimized memory layouts (such as COALESCED layout for reduction operations).
