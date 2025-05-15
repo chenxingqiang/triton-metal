@@ -1,63 +1,86 @@
-# Metal Backend Unit Tests
+# Triton Metal Dialect Tests
 
-This directory contains unit tests for the Triton Metal backend, which enables Triton to run on Apple Silicon GPUs.
+This directory contains tests for the Triton Metal dialect, which extends the Triton dialect with Metal-specific operations and transformations for Apple Silicon GPUs.
 
-## Test Organization
+## Test Categories
 
-The tests are organized as follows:
+The tests are organized into several directories:
 
-### IR Tests
+1. **IR Tests** (`IR/`): Tests for the TritonMetal dialect IR operations
+2. **Transformation Tests** (`Transforms/`): Tests for the TritonMetal dialect transformation passes
+3. **Integration Tests** (`./*.cpp`): Tests for integration with other components
 
-Tests in the `IR/` directory verify the Metal dialect's IR components:
+## IR Tests
 
-- `DialectTest.cpp`: Basic tests for the Metal dialect's operations and types
+The IR tests validate the basic functionality of the TritonMetal dialect:
 
-### Transform Tests
+- **DialectTest.cpp**: Tests loading the TritonMetal dialect and creating modules with it
+- Additional tests for specific operations as they are added to the dialect
 
-Tests in the `Transforms/` directory verify the Metal-specific transformation passes:
+## Transformation Tests
 
-- `TransformsTest.cpp`: Basic tests for Metal dialect transformation passes
-- `MemoryOptimizerTest.cpp`: Tests for the Metal memory optimization passes, particularly for M3-specific memory layouts
-- `M3OptimizationsTest.cpp`: Tests for M3-specific optimizations like 8-wide vectorization and SIMD group enhancements
+The transformation tests validate the TritonMetal-specific passes:
 
-### Integration Tests
+- **TransformsTest.cpp**: Tests for core transformation passes
+- **MemoryOptimizerTest.cpp**: Tests for memory optimization passes
+- **M3OptimizationsTest.cpp**: Tests for M3-specific optimization passes
 
-- `MLXIntegrationTest.cpp`: Tests for integration with the MLX framework
-- `HardwareDetectionTest.cpp`: Tests for Apple Silicon hardware detection and capability identification
+## Integration Tests
+
+The integration tests validate how the TritonMetal dialect works with other components:
+
+- **MLXIntegrationTest.cpp**: Tests integration with the MLX framework
+- **HardwareDetectionTest.cpp**: Tests hardware detection for Apple Silicon
 
 ## Running the Tests
 
-You can run the Metal backend unit tests with the following command:
+To run the TritonMetal dialect tests, use the following command:
 
 ```bash
-cd build
-ninja check-triton-unit-tests
+# Run all tests
+ninja check-triton-metal
+
+# Run specific test
+./build/unittest/Dialect/TritonMetal/IR/TestTritonMetalDialect
+./build/unittest/Dialect/TritonMetal/Transforms/TestTritonMetalTransforms
 ```
 
-Or to run a specific test:
+## Hardware-Specific Testing
 
-```bash
-cd build
-./unittest/Dialect/TritonMetal/TestTritonMetalDialect
-```
+Many tests are specifically designed for Apple Silicon and use the `__APPLE__` preprocessor macro to conditionally skip on non-Apple platforms.
 
-## Test Environment
+## Test Structure
 
-These tests are designed to run on Apple Silicon hardware. Some tests may be skipped when run on non-Apple hardware.
+Each test follows the standard Google Test structure:
 
-## Adding New Tests
+1. **Test fixtures**: Set up the test environment (e.g., MLIRContext with the TritonMetal dialect loaded)
+2. **Test cases**: Individual test cases that validate specific functionality
+3. **Main function**: Initializes Google Test and runs the tests
 
-When adding new tests for the Metal backend:
+## Adding New Dialect Features
 
-1. Create a new test file in the appropriate directory
-2. Update the corresponding CMakeLists.txt file
-3. Add an entry to this README to document the test's purpose
+When adding new features to the TritonMetal dialect:
 
-## Test Dependencies
+1. Add new IR tests for the operations
+2. Add new transformation tests for the passes
+3. Update the existing tests to cover the new functionality
 
-The Metal backend tests depend on:
+## Dependencies
 
-- Google Test framework
-- MLIR Test Utilities
-- Triton Metal libraries (TritonMetalIR, TritonMetalTransforms)
-- MLX framework (for certain tests) 
+The tests depend on:
+- MLIR testing utilities
+- Google Test
+- The TritonMetal dialect implementation
+
+## Future Expansion
+
+As the TritonMetal dialect evolves to support more Metal-specific features, additional tests will be added to validate:
+
+- M3-specific operations and optimizations
+- Integration with MLX framework
+- Integration with the Metal compiler pipeline
+- Performance optimization passes
+
+## Note on Integration Tests
+
+The integration tests may use mock implementations when the actual components are not available, allowing the tests to run even without Apple Silicon hardware. 

@@ -1,192 +1,174 @@
 #!/usr/bin/env python
 """
-Reduction Operations with COALESCED Memory Layout
+Reduction Example - Demonstrating COALESCED Memory Layout
 
-This example demonstrates how reduction operations automatically use the COALESCED
-memory layout in the Metal backend for optimal performance on Apple Silicon GPUs.
+This example shows how the Triton Metal backend automatically applies the 
+COALESCED memory layout to reduction operations for optimal performance 
+on Apple Silicon GPUs.
 """
 
-import numpy as np
-import torch
-import triton
-import triton.language as tl
+import os
+import sys
 import time
+import numpy as np
 import argparse
 
-# Try to import Metal backend components
-try:
-    # This would automatically use the COALESCED layout for reductions
-    from metal_memory_manager import MemoryLayout
-    METAL_BACKEND_AVAILABLE = True
-    print(f"Metal backend available. COALESCED layout value: {MemoryLayout.COALESCED.value}")
-except ImportError:
-    METAL_BACKEND_AVAILABLE = False
-    print("Metal backend not available. Running example using default CUDA backend.")
+# Add parent directory to path for imports
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
 
+# Import Triton for kernel definition
+import triton
+import triton.language as tl
+
+# Define a simple reduction kernel using Triton
+@triton.jit
+def sum_reduction_kernel(
+    x_ptr,  # pointer to input array
+    y_ptr,  # pointer to output array
+    n_elements,  # number of elements in input
+    BLOCK_SIZE: tl.constexpr,  # number of elements per block
+):
+    # Get program ID
+    pid = tl.program_id(axis=0)
+    
+    # Compute block start/end indices
+    block_start = pid * BLOCK_SIZE
+    block_end = tl.minimum(block_start + BLOCK_SIZE, n_elements)
+    
+    # Compute reduction within this block
+    sum_value = 0.0
+    for i in range(block_start, block_end):
+        # Load element
+        x_i = tl.load(x_ptr + i)
+        # Add to accumulator
+        sum_value += x_i
+    
+    # Store result for this block
+    tl.store(y_ptr + pid, sum_value)
 
 @triton.jit
-def row_sum_kernel(
-    input_ptr, output_ptr,
-    n_rows, n_cols,
-    input_row_stride, input_col_stride,
-    BLOCK_SIZE: tl.constexpr,
+def final_reduction_kernel(
+    x_ptr,  # pointer to partial reduction results
+    y_ptr,  # pointer to final result
+    n_blocks,  # number of blocks to reduce
 ):
-    """
-    Compute row-wise sum reduction.
-    This will automatically use COALESCED layout in the Metal backend.
-    """
-    # Get the program ID
-    pid = tl.program_id(0)
+    # Single program to perform final reduction
+    sum_value = 0.0
+    for i in range(n_blocks):
+        x_i = tl.load(x_ptr + i)
+        sum_value += x_i
     
-    # Check if we are within bounds
-    if pid >= n_rows:
-        return
-        
-    # Offset the input pointer to the start of this row
-    input_row_ptr = input_ptr + pid * input_row_stride
-    
-    # Initialize the accumulator
-    acc = 0.0
-    
-    # Process the row in blocks
-    for i in range(0, n_cols, BLOCK_SIZE):
-        # Create a mask for the elements in this block
-        mask = tl.arange(0, BLOCK_SIZE) + i < n_cols
-        
-        # Load the elements for this block
-        x = tl.load(input_row_ptr + tl.arange(0, BLOCK_SIZE) * input_col_stride, mask=mask, other=0.0)
-        
-        # Accumulate the sum
-        acc += tl.sum(x, axis=0)
-    
-    # Store the result
-    tl.store(output_ptr + pid, acc)
+    # Store final result
+    tl.store(y_ptr, sum_value)
 
-
-def row_sum_triton(x):
-    """
-    Compute row-wise sum reduction using Triton.
+# Function to run reduction using triton
+def triton_sum_reduction(x, block_size=1024):
+    # Get input size
+    n_elements = x.size
     
-    Args:
-        x: Input tensor of shape [batch, features]
-        
-    Returns:
-        Row-wise sum tensor of shape [batch]
-    """
-    # Input dimensions
-    batch, features = x.shape
+    # Compute number of blocks
+    n_blocks = (n_elements + block_size - 1) // block_size
     
-    # Create output tensor
-    y = torch.empty(batch, device=x.device, dtype=x.dtype)
+    # Allocate output and partial results
+    partial_results = np.zeros(n_blocks, dtype=np.float32)
+    y = np.zeros(1, dtype=np.float32)
     
-    # Define grid and block size
-    BLOCK_SIZE = 1024
-    grid = (batch,)
+    # Start timing
+    start = time.time()
     
-    # Launch kernel
-    row_sum_kernel[grid](
-        x, y,
-        batch, features,
-        x.stride(0), x.stride(1),
-        BLOCK_SIZE=BLOCK_SIZE,
+    # Run reduction in two stages
+    # Stage 1: Reduction within blocks
+    sum_reduction_kernel[(n_blocks,)](
+        x, partial_results, n_elements, block_size,
     )
     
-    return y
+    # Stage 2: Final reduction across blocks
+    final_reduction_kernel[(1,)](
+        partial_results, y, n_blocks,
+    )
+    
+    # End timing
+    end = time.time()
+    elapsed = end - start
+    
+    # Print performance information
+    print(f"Triton reduction (with COALESCED layout): {elapsed:.6f}s")
+    print(f"Input size: {n_elements}, Output: {y[0]:.4f}")
+    print(f"Expected result: {np.sum(x):.4f}")
+    print(f"Difference: {abs(y[0] - np.sum(x)):.6f}")
+    
+    return y[0], elapsed
 
-
-def benchmark_reduction(batch_size, feature_size, dtype=torch.float32, num_repeats=100):
-    """
-    Benchmark reduction operations.
-    
-    Args:
-        batch_size: Number of rows
-        feature_size: Number of columns
-        dtype: Data type
-        num_repeats: Number of repetitions for timing
-        
-    Returns:
-        Dictionary with benchmark results
-    """
-    # Create input tensor
-    if torch.cuda.is_available():
-        device = torch.device("cuda")
-    else:
-        device = torch.device("cpu")
-        
-    x = torch.randn(batch_size, feature_size, device=device, dtype=dtype)
-    
-    # Compute reference result
-    reference = torch.sum(x, dim=1)
-    
-    # Warm up
-    triton_result = row_sum_triton(x)
-    
-    # Check correctness
-    torch.testing.assert_close(triton_result, reference, rtol=1e-2, atol=1e-2)
-    
-    # Benchmark PyTorch
-    torch.cuda.synchronize()
+# Numpy reduction for comparison
+def numpy_sum_reduction(x):
+    # Start timing
     start = time.time()
-    for _ in range(num_repeats):
-        _ = torch.sum(x, dim=1)
-    torch.cuda.synchronize()
-    pytorch_time = (time.time() - start) * 1000 / num_repeats
     
-    # Benchmark Triton
-    torch.cuda.synchronize()
-    start = time.time()
-    for _ in range(num_repeats):
-        _ = row_sum_triton(x)
-    torch.cuda.synchronize()
-    triton_time = (time.time() - start) * 1000 / num_repeats
+    # Perform sum reduction with NumPy
+    result = np.sum(x)
     
-    # Return results
-    return {
-        "pytorch_ms": pytorch_time,
-        "triton_ms": triton_time,
-        "speedup": pytorch_time / triton_time,
-        "batch_size": batch_size,
-        "feature_size": feature_size,
-        "metal_backend": METAL_BACKEND_AVAILABLE,
-    }
-
-
-def print_results(results):
-    """Print benchmark results"""
-    print("\n=== Benchmark Results ===")
-    print(f"Batch size: {results['batch_size']}")
-    print(f"Feature size: {results['feature_size']}")
-    print(f"Metal backend available: {results['metal_backend']}")
-    print(f"PyTorch time: {results['pytorch_ms']:.4f} ms")
-    print(f"Triton time: {results['triton_ms']:.4f} ms")
-    print(f"Speedup: {results['speedup']:.2f}x")
+    # End timing
+    end = time.time()
+    elapsed = end - start
     
-    # Print note about COALESCED layout
-    if results['metal_backend']:
-        print("\nNote: The Metal backend automatically uses COALESCED layout")
-        print("for reduction operations like this row-wise sum.")
+    # Print performance information
+    print(f"NumPy reduction: {elapsed:.6f}s")
+    print(f"Result: {result:.4f}")
+    
+    return result, elapsed
 
+# Function to check if MLX is available (Apple Silicon with Metal)
+def is_metal_available():
+    try:
+        import mlx.core
+        return True
+    except ImportError:
+        return False
 
 def main():
-    """Main function"""
-    parser = argparse.ArgumentParser(description="Benchmark reduction operations")
-    parser.add_argument("--batch", type=int, default=1024, help="Batch size")
-    parser.add_argument("--features", type=int, default=1024, help="Feature size")
-    parser.add_argument("--dtype", type=str, default="float32", choices=["float32", "float16"], 
-                        help="Data type")
-    parser.add_argument("--repeats", type=int, default=100, help="Number of repetitions")
-    
+    parser = argparse.ArgumentParser(description="Reduction example with COALESCED layout")
+    parser.add_argument("--size", type=int, default=10_000_000, help="Size of input array")
+    parser.add_argument("--block-size", type=int, default=1024, help="Block size for reduction")
+    parser.add_argument("--verify", action="store_true", help="Verify results against NumPy")
     args = parser.parse_args()
     
-    # Convert dtype string to torch dtype
-    dtype = torch.float32 if args.dtype == "float32" else torch.float16
+    # Check if running on Apple Silicon
+    if not is_metal_available():
+        print("Warning: MLX not available. This example is optimized for Apple Silicon with Metal.")
+        print("Performance may not be optimal on this platform.")
+    else:
+        print("Running on Apple Silicon with Metal backend.")
+        print("This will automatically use COALESCED layout in the Metal backend.")
     
-    # Run benchmark
-    results = benchmark_reduction(args.batch, args.features, dtype, args.repeats)
+    # Create random input array
+    print(f"Creating random array with {args.size} elements...")
+    x = np.random.rand(args.size).astype(np.float32)
     
-    # Print results
-    print_results(results)
-
+    print("\nRunning Triton reduction (uses COALESCED layout automatically)...")
+    triton_result, triton_time = triton_sum_reduction(x, args.block_size)
+    
+    if args.verify:
+        print("\nVerifying results with NumPy...")
+        numpy_result, numpy_time = numpy_sum_reduction(x)
+        
+        # Calculate speedup
+        speedup = numpy_time / triton_time
+        print(f"\nSpeedup over NumPy: {speedup:.2f}x")
+        
+        # Verify correctness
+        error = abs(triton_result - numpy_result)
+        tolerance = 1e-5
+        if error < tolerance:
+            print(f"✅ Results match within tolerance ({error:.8f} < {tolerance})")
+        else:
+            print(f"❌ Results differ by {error:.8f}, which is above tolerance {tolerance}")
+    
+    print("\nNote: The COALESCED memory layout (value 8) is automatically applied")
+    print("for reduction operations in the Metal backend, providing optimal performance")
+    print("on Apple Silicon GPUs through better memory access patterns.")
 
 if __name__ == "__main__":
     main() 

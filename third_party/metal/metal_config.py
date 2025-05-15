@@ -12,7 +12,7 @@ METAL_BACKEND_VERSION = "1.0.0"
 
 # Repository information
 REPO_AUTHOR = "Cheng Xingqiang"
-REPO_URL = "https://github.com/chengxingqiang/triton-matel"
+REPO_URL = "https://github.com/chengxingqiang/triton-metal"
 
 # Metal backend requirements
 MIN_MACOS_VERSION = (13, 5)  # macOS 13.5 or higher

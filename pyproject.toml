@@ -3,7 +3,7 @@ requires = ["setuptools>=40.8.0", "cmake>=3.18", "ninja>=1.11.1", "pybind11>=2.1
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "triton-matel"
+name = "triton-metal"
 version = "3.3.0+metal"
 description = "Enhanced Triton with Metal backend for Apple Silicon GPUs"
 readme = "README.md"
@@ -32,10 +32,10 @@ dependencies = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/chengxingqiang/triton-matel"
-"Bug Tracker" = "https://github.com/chengxingqiang/triton-matel/issues"
-"Documentation" = "https://github.com/chengxingqiang/triton-matel/tree/main/docs"
-"Source Code" = "https://github.com/chengxingqiang/triton-matel"
+"Homepage" = "https://github.com/chengxingqiang/triton-metal"
+"Bug Tracker" = "https://github.com/chengxingqiang/triton-metal/issues"
+"Documentation" = "https://github.com/chengxingqiang/triton-metal/tree/main/docs"
+"Source Code" = "https://github.com/chengxingqiang/triton-metal"
 
 [project.optional-dependencies]
 build = [

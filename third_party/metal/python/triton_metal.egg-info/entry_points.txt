@@ -1,0 +1,2 @@
+[triton.backends]
+metal = triton.backends.metal

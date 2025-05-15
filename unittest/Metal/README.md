@@ -1,60 +1,80 @@
-# Metal-Specific Unit Tests
+# Triton Metal Backend Tests
 
-This directory contains platform-specific unit tests for the Triton Metal backend. These tests are designed to run on Apple Silicon hardware and may involve actual interaction with the Metal API and MLX framework.
+This directory contains tests for the Triton Metal backend, which targets Apple Silicon GPUs (M1, M2, and M3). The tests validate various aspects of the Metal backend implementation, with a particular focus on M3-specific optimizations.
 
-## Test Files
+## Test Categories
 
-### MetalBackendTest.cpp
-Tests the basic functionality of the Metal backend, including:
-- Detecting Metal availability
-- Initializing the Metal backend
-- Compiling simple kernels
+The tests are organized into several categories:
 
-### M3OptimizationsTest.cpp
-Tests the M3-specific optimizations, including:
-- Detecting M3 hardware
-- Verifying shared memory size (64KB)
-- Verifying vector width (8-wide)
-- Verifying SIMD group width (32-wide)
-- Testing tensor core support
+1. **MetalBackendTest**: Basic functionality tests for the Metal backend
+2. **M3OptimizationsTest**: Tests for M3-specific optimizations
+3. **MetalMemoryManagerTest**: Tests for the Metal memory management system
 
-### MetalMemoryManagerTest.cpp
-Tests the Metal memory manager functionality, including:
-- Initializing the memory manager
-- Allocating and deallocating buffers
-- Getting optimal tile sizes
-- Getting optimal threadgroup sizes
-- Getting optimal vector widths
-- Testing memory layout strategies
+## Test Organization
 
-## Test Requirements
+The Metal tests are organized hierarchically:
 
-These tests require:
-- Apple Silicon hardware (M1, M2, or M3)
-- macOS 13.5 or higher
-- Metal framework
-- MLX framework
+1. **Dialect Tests** (`unittest/Dialect/TritonMetal/`): Tests for the TritonMetal dialect operations and transformations
+2. **Backend Tests** (`unittest/Metal/`): Tests for the Metal backend implementation
 
 ## Running the Tests
 
-```bash
-cd build
-ninja check-triton-unit-tests
-```
-
-## Debugging Tests
-
-If tests fail, enable more verbose output:
+To run the Metal tests, use the following command:
 
 ```bash
-cd build
-ctest -V -R TestMetal
+# Run all tests
+ninja check-triton-metal
+
+# Run specific test
+./build/unittest/Metal/TestMetalBackend
+./build/unittest/Metal/TestM3Optimizations
+./build/unittest/Metal/TestMetalMemoryManager
 ```
+
+## Hardware-Specific Testing
+
+Many tests are specifically designed to test hardware-specific features and will only run on Apple Silicon hardware. Tests that require Metal support use the `__APPLE__` preprocessor macro to conditionally skip on non-Apple platforms.
+
+For M3-specific tests, the tests can detect the hardware or use environment variables to simulate M3 hardware:
+
+```bash
+# Force tests to behave as if running on M3 hardware
+export TRITON_METAL_IS_M3=1
+```
+
+## Test Structure
+
+Each test follows a similar structure:
+
+1. **Mock implementations**: Simplified versions of the actual implementation for testing
+2. **Test fixtures**: Google Test fixtures that set up the test environment
+3. **Test cases**: Individual test cases that validate specific functionality
+4. **Hardware-specific tests**: Tests that only run on specific hardware platforms
+
+## Testing M3-Specific Features
+
+The M3-specific tests focus on the following features:
+
+- **64KB shared memory** (vs 32KB on M1/M2)
+- **8-wide vectorization** (vs 4-wide on M1/M2)
+- **32-wide SIMD groups**
+- **Enhanced tensor cores**
+- **Dynamic caching**
+
+## MLX Integration Tests
+
+The MLX integration tests validate the integration between Triton and the MLX framework for Metal on Apple Silicon. These tests ensure that Triton operations can be correctly mapped to MLX operations.
 
 ## Adding New Tests
 
-When adding new Metal-specific tests:
-1. Create a new test file in this directory
-2. Update the CMakeLists.txt file
-3. Make sure to conditionally run tests only on Apple Silicon hardware
-4. Document the purpose of the test in this README 
+When adding new tests:
+
+1. Create a new test file in the appropriate directory
+2. Add the test to the corresponding CMakeLists.txt file
+3. Use the `#ifdef __APPLE__` directive to skip tests on non-Apple platforms
+4. Use mock classes to simulate the actual implementation when needed
+5. Ensure tests can run with or without actual M3 hardware using environment variables
+
+## Test Reports
+
+Test results are reported using the standard Google Test format. For Metal-specific tests, additional information may be printed to help diagnose issues on specific hardware platforms. 

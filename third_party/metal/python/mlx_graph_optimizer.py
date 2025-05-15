@@ -165,7 +165,8 @@ class M3SpecificFusionPass(OptimizationPass):
             lambda ops: ops[0].get("type") == "tt.matmul" and 
                         ops[1].get("type") == "tt.binary.div" and
                         ops[2].get("type") == "tt.softmax" and
-                        ops[3].get("type") == "tt.matmul"
+                        ops[3].get("type") == "tt.matmul",
+            min_hardware_gen=AppleSiliconGeneration.M3
         ))
         
         # Fused SwiGLU with additional optimizations for M3
@@ -174,7 +175,8 @@ class M3SpecificFusionPass(OptimizationPass):
             ["mul", "sigmoid", "mul"],
             lambda ops: ops[0].get("type") == "tt.binary.mul" and 
                         ops[1].get("type") == "tt.unary.sigmoid" and
-                        ops[2].get("type") == "tt.binary.mul"
+                        ops[2].get("type") == "tt.binary.mul",
+            min_hardware_gen=AppleSiliconGeneration.M3
         ))
         
         # Multi-head attention fusion specifically for M3
@@ -188,7 +190,8 @@ class M3SpecificFusionPass(OptimizationPass):
                         ops[4].get("type") == "tt.softmax" and
                         ops[5].get("type") == "tt.matmul" and
                         ops[6].get("type") == "tt.transpose" and
-                        ops[7].get("type") == "tt.reshape"
+                        ops[7].get("type") == "tt.reshape",
+            min_hardware_gen=AppleSiliconGeneration.M3
         ))
         
         # Fused layer normalization for M3
@@ -202,7 +205,66 @@ class M3SpecificFusionPass(OptimizationPass):
                         ops[4].get("type") == "tt.unary.sqrt" and
                         ops[5].get("type") == "tt.binary.div" and
                         ops[6].get("type") == "tt.binary.mul" and
-                        ops[7].get("type") == "tt.binary.add"
+                        ops[7].get("type") == "tt.binary.add",
+            min_hardware_gen=AppleSiliconGeneration.M3
+        ))
+        
+        # Fused matrix multiply with GELU activation optimized for M3 tensor cores
+        patterns.append(FusionPattern(
+            "matmul_gelu",
+            ["matmul", "mul", "pow", "mul", "add", "mul", "tanh", "add", "mul"],
+            lambda ops: ops[0].get("type") == "tt.matmul" and
+                       ops[1].get("type") == "tt.binary.mul" and
+                       ops[2].get("type") == "tt.pow" and
+                       ops[3].get("type") == "tt.binary.mul" and
+                       ops[4].get("type") == "tt.binary.add" and
+                       ops[5].get("type") == "tt.binary.mul" and
+                       ops[6].get("type") == "tt.unary.tanh" and
+                       ops[7].get("type") == "tt.binary.add" and
+                       ops[8].get("type") == "tt.binary.mul",
+            min_hardware_gen=AppleSiliconGeneration.M3
+        ))
+        
+        # Fused convolution with batch norm for M3
+        patterns.append(FusionPattern(
+            "conv_batchnorm",
+            ["conv2d", "sub", "mul", "add"],
+            lambda ops: ops[0].get("type") == "tt.conv2d" and
+                       ops[1].get("type") == "tt.binary.sub" and
+                       ops[2].get("type") == "tt.binary.mul" and
+                       ops[3].get("type") == "tt.binary.add",
+            min_hardware_gen=AppleSiliconGeneration.M3
+        ))
+        
+        # Fused matrix multiply with bias and activation for M3 tensor cores
+        patterns.append(FusionPattern(
+            "matmul_bias_act",
+            ["matmul", "add", "relu"],
+            lambda ops: ops[0].get("type") == "tt.matmul" and
+                       ops[1].get("type") == "tt.binary.add" and
+                       ops[2].get("type") in ["tt.relu", "tt.unary.relu"],
+            min_hardware_gen=AppleSiliconGeneration.M3
+        ))
+        
+        # Fused dot product attention for M3 (Scaled Dot-Product Attention)
+        patterns.append(FusionPattern(
+            "scaled_dot_product_attention",
+            ["matmul", "div", "softmax", "matmul"],
+            lambda ops: ops[0].get("type") == "tt.matmul" and
+                       ops[1].get("type") == "tt.binary.div" and
+                       ops[2].get("type") == "tt.softmax" and
+                       ops[3].get("type") == "tt.matmul",
+            min_hardware_gen=AppleSiliconGeneration.M3
+        ))
+        
+        # Optimized reduction operations for M3
+        patterns.append(FusionPattern(
+            "fused_reduction",
+            ["reduce", "add", "div"],
+            lambda ops: ops[0].get("type") == "tt.reduce" and
+                       ops[1].get("type") == "tt.binary.add" and
+                       ops[2].get("type") == "tt.binary.div",
+            min_hardware_gen=AppleSiliconGeneration.M3
         ))
         
         return patterns
@@ -224,7 +286,8 @@ class M3SpecificFusionPass(OptimizationPass):
         fusion_optimizer = FusionOptimizer(hardware_capabilities)
         
         # Add M3-specific patterns to the optimizer
-        fusion_optimizer.patterns.extend(self.m3_patterns)
+        for pattern in self.m3_patterns:
+            fusion_optimizer.patterns.append(pattern)
         
         # Apply fusion optimizations
         ops = graph["ops"]
@@ -242,6 +305,15 @@ class M3SpecificFusionPass(OptimizationPass):
             optimized_graph["metadata"] = {}
         optimized_graph["metadata"]["m3_optimized"] = True
         optimized_graph["metadata"]["m3_fusion_applied"] = fused_count > 0
+        optimized_graph["metadata"]["m3_fusion_count"] = fused_count
+        # Add details on M3-specific features
+        optimized_graph["metadata"]["m3_features"] = {
+            "tensor_cores_used": True,
+            "simdgroup_width": 32,
+            "shared_memory_size": 65536,  # 64KB for M3
+            "vector_width": 8,
+            "dynamic_caching": True
+        }
         
         return optimized_graph, {"m3_fused_ops": fused_count}
 

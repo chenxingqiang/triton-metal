@@ -111,329 +111,221 @@ class M3MemoryLayout(Enum):
 
 class M3MemoryManager:
     """
-    M3-specific memory management and optimization
+    Memory manager specifically optimized for M3 hardware
     
-    This class provides specialized memory management strategies for Apple M3 GPUs, 
-    leveraging M3-specific hardware features like:
-    
-    - 64KB shared memory (vs 32KB on M1/M2)
-    - 8-wide vectorization
-    - 32-wide SIMD groups
-    - Tensor core acceleration
-    - Dynamic caching
-    - Hierarchical reduction
-    
-    The manager automatically adapts to non-M3 hardware when needed, falling back
-    to more conservative memory strategies that work across all Apple Silicon chips.
+    This class provides memory layout optimization for Apple Silicon M3 GPUs,
+    leveraging their enhanced features:
+    - 64KB of shared memory (up from 32KB)
+    - 32-wide SIMD (vs 16-wide on older generations)
+    - Enhanced vectorization (8-wide vs 4-wide)
+    - Tensor cores for matrix operations
+    - Larger threadgroup sizes (up to 1024 threads)
     """
-
-    def __init__(self):
-        """Initialize M3 memory manager"""
-        self.is_m3 = self._is_m3_hardware()
-
-        if not self.is_m3:
-            print("Warning: M3MemoryManager initialized on non-M3 hardware. Some optimizations will be disabled.")
-
-        # Hardware-specific parameters
-        # M3 has 64KB shared memory, others have 32KB
-        self.shared_memory_size = 65536 if self.is_m3 else 32768
-        self.vector_width = 8 if self.is_m3 else 4
-        self.simdgroup_width = 32 if self.is_m3 else 16
-        self.max_threadgroup_size = 1024 if self.is_m3 else 512
-
-        # Preferred tile size depends on hardware
-        self.preferred_tile_size = 128 if self.is_m3 else 64
-
-        # M3-specific capabilities
+    
+    def __init__(self, hardware_capabilities=None):
+        """
+        Initialize M3 memory manager
+        
+        Args:
+            hardware_capabilities: Optional hardware capabilities instance
+        """
+        self.hardware = hardware_capabilities
+        
+        # Detect if we're running on M3
+        self.is_m3 = self._detect_m3()
+        
+        # Set M3-specific parameters
+        self.shared_memory_size = 65536  # 64KB for M3 (vs 32KB for M1/M2)
+        self.vector_width = 8  # 8-wide vectors for M3 (vs 4-wide for M1/M2)
+        self.simdgroup_width = 32  # 32-wide SIMD for M3 (vs 16-wide for older gens)
+        self.preferred_tile_size = 32  # Optimal tile size for M3
+        self.max_threadgroup_size = 1024  # Max threads per threadgroup
+        
+        # Set M3 feature support flags
         self.supports_tensor_cores = self.is_m3
         self.supports_dynamic_caching = self.is_m3
         self.supports_flexible_memory = self.is_m3
-        self.supports_simdgroups = True
-
-    def _is_m3_hardware(self) -> bool:
-        """Check if running on M3 hardware"""
-        try:
-            return hardware_capabilities.chip_generation == AppleSiliconGeneration.M3
-        except Exception:
-            # Default to conservative approach
-            return False
-
-    def is_m3_available(self) -> bool:
-        """Public method to check if M3 hardware is available"""
-        return self._is_m3_hardware()
-
-    def get_optimal_layout(self, tensor_type: TensorType, shape: List[int]) -> M3MemoryLayout:
+        self.supports_simdgroups = self.is_m3
+        
+    def _detect_m3(self) -> bool:
         """
-        Determine optimal memory layout for a tensor
-
+        Detect if we're running on M3 hardware
+        
+        Returns:
+            True if running on M3, False otherwise
+        """
+        if not self.hardware:
+            return False
+            
+        return (hasattr(self.hardware, "chip_generation") and 
+                self.hardware.chip_generation == AppleSiliconGeneration.M3)
+    
+    def get_optimal_layout(self, tensor_type: TensorType, shape: List[int]) -> MemoryLayout:
+        """
+        Get optimal memory layout for a tensor type and shape on M3
+        
         Args:
             tensor_type: Type of tensor
-            shape: Shape of tensor
-
+            shape: Tensor shape
+            
         Returns:
             Optimal memory layout
         """
-        # Determine layout based on tensor type and shape
+        if not self.is_m3:
+            # For non-M3 hardware, use default layout determination
+            return self._get_default_layout(tensor_type, shape)
+        
+        # M3-specific layout optimizations
         if tensor_type == TensorType.MATRIX:
-            # For matrices, use block-based layouts
-            if self.is_m3 and len(shape) >= 2 and shape[0] >= 128 and shape[1] >= 128:
-                return M3MemoryLayout.BLOCK_BASED_128
+            # For large matrices, use tiled layout with M3-optimized tile size
+            if len(shape) >= 2 and shape[0] >= 32 and shape[1] >= 32:
+                return MemoryLayout.TILED
+            # For medium matrices, use block layout
+            elif len(shape) >= 2 and shape[0] >= 16 and shape[1] >= 16:
+                return MemoryLayout.BLOCK
+            # For small matrices, use SIMD layout
             else:
-                return M3MemoryLayout.BLOCK_BASED_64
-
-        elif tensor_type == TensorType.CONV_FILTER:
-            # For convolution filters, optimize for SIMD groups
-            return M3MemoryLayout.SIMDGROUP_OPTIMIZED
-
-        elif tensor_type == TensorType.FEATURE_MAP:
-            # For feature maps, optimize for texture access
-            return M3MemoryLayout.TEXTURE_OPTIMIZED
-
+                return MemoryLayout.SIMD_FRIENDLY
+                
         elif tensor_type == TensorType.VECTOR:
-            # For vectors, use row major for better coalescing
-            return M3MemoryLayout.ROW_MAJOR
-
-        elif tensor_type == TensorType.RAY_TRACING:
-            # For ray tracing data, use dynamic caching if available
-            return M3MemoryLayout.DYNAMIC_CACHED
-
-        elif tensor_type == TensorType.MESH_DATA:
-            # For mesh data, optimize for SIMD groups
-            return M3MemoryLayout.SIMDGROUP_OPTIMIZED
-
-        # Default to row major for other types
-        return M3MemoryLayout.ROW_MAJOR
-
+            # For large vectors, use coalesced layout
+            if len(shape) == 1 and shape[0] >= 1024:
+                return MemoryLayout.COALESCED
+            # For small vectors, use SIMD-friendly layout
+            else:
+                return MemoryLayout.SIMD_FRIENDLY
+                
+        elif tensor_type == TensorType.REDUCTION:
+            # Always use coalesced layout for reductions on M3
+            return MemoryLayout.COALESCED
+            
+        elif tensor_type == TensorType.CONV_FILTER:
+            # Use texture memory layout for convolution filters on M3
+            return MemoryLayout.TEXTURE
+            
+        # Default to standard layout
+        return MemoryLayout.DEFAULT
+    
     def get_optimal_threadgroup_size(self, tensor_type: TensorType, shape: List[int]) -> int:
         """
-        Get optimal threadgroup size for a tensor type and shape
-
+        Get optimal threadgroup size for a tensor type and shape on M3
+        
         Args:
             tensor_type: Type of tensor
-            shape: Shape of tensor
-
+            shape: Tensor shape
+            
         Returns:
             Optimal threadgroup size
         """
         if not self.is_m3:
-            # Non-M3 hardware has smaller threadgroups
-            if tensor_type == TensorType.MATRIX:
-                return 256
-            return 128
-
-        # M3-specific optimizations
+            # For non-M3 hardware, use more conservative sizes
+            return min(256, self.max_threadgroup_size)
+        
+        # M3-specific threadgroup size optimizations
         if tensor_type == TensorType.MATRIX:
-            # Matrix operations work best with full threadgroups on M3
-            return 1024
-
-        elif tensor_type == TensorType.REDUCTION:
-            # Reduction operations with medium threadgroups
+            # Matrix operations benefit from larger threadgroups on M3
             return 512
-
-        elif tensor_type == TensorType.ELEMENTWISE:
-            # Element-wise operations with flexible threadgroups
+            
+        elif tensor_type == TensorType.VECTOR:
+            # Vector operations use moderate threadgroup sizes
             return 256
-
-        # Default for other types
+            
+        elif tensor_type == TensorType.REDUCTION:
+            # Reductions benefit from large threadgroups
+            return 512
+            
+        elif tensor_type == TensorType.CONV_FILTER:
+            # Convolution operations also benefit from large threadgroups
+            return 512
+            
+        # Default to moderate size
         return 256
-
+    
     def get_optimal_tile_size(self, tensor_type: TensorType, shape: List[int]) -> Tuple[int, int]:
         """
-        Get optimal tile size for a tensor type and shape
-
+        Get optimal tile size for a tensor type and shape on M3
+        
         Args:
             tensor_type: Type of tensor
-            shape: Shape of tensor
-
+            shape: Tensor shape
+            
         Returns:
             Tuple of (tile_width, tile_height)
         """
         if not self.is_m3:
-            # Default to smaller tiles for non-M3 hardware
-            if tensor_type == TensorType.MATRIX:
-                return (64, 64)
-            elif tensor_type == TensorType.REDUCTION:
-                return (128, 16)
-            # Default for other types
-            return (32, 32)
-
-        # M3-specific optimizations
+            # For non-M3 hardware, use smaller tiles
+            return (16, 16)
+        
+        # M3-specific tile size optimizations
         if tensor_type == TensorType.MATRIX:
-            # Matrix operations work best with 128x128 tiles on M3
-            return (128, 128)
-
-        elif tensor_type == TensorType.REDUCTION:
-            # Reduction operations work best with wide tiles on M3
-            return (256, 32)
-
+            # For matrix operations, use 32x32 tiles on M3
+            return (32, 32)
+            
         elif tensor_type == TensorType.CONV_FILTER:
-            # Conv filters work best with square tiles
-            return (64, 64)
-
-        elif tensor_type == TensorType.FEATURE_MAP:
-            # Feature maps work best with rectangular tiles
-            return (64, 32)
-
-        # Default for other types
-        return (64, 64)
-
+            # For convolution filters, use rectangular tiles
+            return (32, 16)
+            
+        # Default to square tiles
+        return (self.preferred_tile_size, self.preferred_tile_size)
+    
     def get_optimal_vector_width(self, tensor_type: TensorType) -> int:
         """
-        Get optimal vector width for a tensor type
-
+        Get optimal vector width for a tensor type on M3
+        
         Args:
             tensor_type: Type of tensor
-
+            
         Returns:
             Optimal vector width
         """
         if not self.is_m3:
-            # Default to 4-wide vectors for non-M3 hardware
+            # For non-M3 hardware, use smaller vector width
             return 4
-
-        # M3-specific optimizations
-        if tensor_type == TensorType.ELEMENTWISE:
-            # Element-wise operations work best with 8-wide vectors on M3
-            return 8
-
-        elif tensor_type == TensorType.VECTOR:
-            # Vector operations work best with 8-wide vectors on M3
-            return 8
-
-        # Default for other types including matrices
-        return 4
-
-    def allocate_buffer(self, size: int, tensor_type: TensorType) -> Dict:
-        """
-        Allocate an optimized buffer for a tensor
-
-        Args:
-            size: Size of buffer in bytes
-            tensor_type: Type of tensor
-
-        Returns:
-            Buffer configuration dictionary
-        """
-        # Default buffer configuration
-        buffer = {
-            "size": size,
-            "type": "standard",
-            "alignment": 16
-        }
-
-        # Apply tensor-specific optimizations for M3
-        if self.is_m3:
-            if tensor_type == TensorType.MATRIX:
-                # Use matrix-specific buffer for matrices
-                buffer.update({
-                    "type": "matrix",
-                    "layout": M3MemoryLayout.BLOCK_BASED_128.name,
-                    "alignment": 256
-                })
-
-            elif tensor_type == TensorType.VECTOR:
-                # Use vector-specific buffer for vectors
-                buffer.update({
-                    "type": "vector",
-                    "layout": M3MemoryLayout.ROW_MAJOR.name,
-                    "vector_width": 8,
-                    "alignment": 128
-                })
-
-            elif tensor_type == TensorType.CONV_FILTER:
-                # Use optimized buffer for convolution filters
-                buffer.update({
-                    "type": "conv_filter",
-                    "layout": M3MemoryLayout.SIMDGROUP_OPTIMIZED.name,
-                    "alignment": 256
-                })
-
-        return buffer
-
-    def optimize_memory_access(self, op: Dict, tensor_type: TensorType) -> Dict:
-        """
-        Optimize memory access for an operation
         
-        Args:
-            op: Operation dictionary
-            tensor_type: Type of tensor
+        # M3-specific vector width optimizations
+        if tensor_type == TensorType.MATRIX:
+            # For matrix operations, use M3's enhanced 8-wide vectors
+            return 8
             
-        Returns:
-            Optimized operation dictionary
-        """
-        # For non-M3 hardware, return the original op without modifications
-        if not self.is_m3:
-            return op
-        
-        # Make a copy of the operation to avoid modifying the original
-        optimized_op = op.copy()
-        
-        # Get optimal parameters for this tensor type
-        memory_layout = self.get_optimal_layout(tensor_type, op.get("shape", []))
-        threadgroup_size = self.get_optimal_threadgroup_size(tensor_type, op.get("shape", []))
-        tile_width, tile_height = self.get_optimal_tile_size(tensor_type, op.get("shape", []))
-        vector_width = self.get_optimal_vector_width(tensor_type)
-        
-        # Set execution parameters
-        optimized_op["threadgroup_size"] = threadgroup_size
-        optimized_op["execution_parameters"] = {
-            "memory_layout": memory_layout.name,
-            "tile_width": tile_width,
-            "tile_height": tile_height,
-            "vector_width": vector_width,
-            "use_tensor_cores": self.supports_tensor_cores,
-            "use_dynamic_caching": self.supports_dynamic_caching,
-            "use_flexible_memory": self.supports_flexible_memory,
-            "use_simdgroups": self.supports_simdgroups
-        }
-        
-        # Add tensor-specific parameters
-        if tensor_type == TensorType.REDUCTION:
-            optimized_op["execution_parameters"]["use_hierarchical_reduction"] = True
-        elif tensor_type == TensorType.MATRIX:
-            optimized_op["execution_parameters"]["use_tensor_cores"] = True
-        elif tensor_type == TensorType.CONV_FILTER:
-            optimized_op["execution_parameters"]["use_texture_memory"] = True
-        
-        return optimized_op
-
+        elif tensor_type == TensorType.VECTOR:
+            # For vector operations, also use 8-wide vectors
+            return 8
+            
+        elif tensor_type == TensorType.REDUCTION:
+            # For reduction operations, maximizing parallelism helps
+            return 8
+            
+        # Default to 4-wide for other operation types
+        return 4
+    
     def _get_tensor_type_for_op(self, op_type: str) -> TensorType:
         """
         Determine tensor type based on operation type
         
         Args:
-            op_type: Type of operation
+            op_type: Operation type
             
         Returns:
-            Associated tensor type
+            Tensor type
         """
-        op_type = op_type.lower()
+        # Extract operation base type if it contains dots
+        if "." in op_type:
+            op_type = op_type.split(".")[-1]
         
-        if "matmul" in op_type or "gemm" in op_type or "dot" in op_type:
+        # Map operations to tensor types
+        if op_type in ["matmul", "mm", "dot", "linear"]:
             return TensorType.MATRIX
-        
-        elif "conv" in op_type:
-            return TensorType.CONV_FILTER
-        
-        elif "attention" in op_type or "self_attention" in op_type:
-            return TensorType.ATTENTION
-        
-        elif "reduce" in op_type or "sum" in op_type or "mean" in op_type:
+            
+        elif op_type in ["reduce", "sum", "mean", "max", "min", "softmax"]:
             return TensorType.REDUCTION
-        
-        elif "elementwise" in op_type or "add" in op_type or "mul" in op_type:
-            return TensorType.ELEMENTWISE
             
-        elif "ray" in op_type or "ray_intersect" in op_type or "ray_trace" in op_type:
-            return TensorType.RAY_TRACING
+        elif op_type in ["conv1d", "conv2d", "conv3d"]:
+            return TensorType.CONV_FILTER
             
-        elif "mesh" in op_type:
-            return TensorType.MESH_DATA
+        elif op_type in ["elementwise", "add", "mul", "sub", "div", "relu", "sigmoid", "tanh"]:
+            return TensorType.VECTOR
             
-        elif "image" in op_type:
-            return TensorType.IMAGE
-        
-        # Default to vector for unknown types (changed from MATRIX to VECTOR)
+        # Default to vector type
         return TensorType.VECTOR
 
     def optimize_graph_memory(self, graph: Dict) -> Dict:
@@ -497,10 +389,43 @@ class M3MemoryManager:
                 # Add tensor-specific parameters
                 if tensor_type == TensorType.REDUCTION:
                     optimized_op["execution_parameters"]["use_hierarchical_reduction"] = True
+                    # M3-specific: Use multi-stage reduction for large reductions
+                    if "shape" in op and len(op["shape"]) > 0 and op["shape"][0] > 10000:
+                        optimized_op["execution_parameters"]["use_multi_stage_reduction"] = True
+                        optimized_op["execution_parameters"]["reduction_stages"] = 2
+                        
                 elif tensor_type == TensorType.MATRIX:
                     optimized_op["execution_parameters"]["use_tensor_cores"] = True
+                    # M3-specific: Set optimal matrix multiplication parameters
+                    optimized_op["execution_parameters"]["simdgroup_matrix_size"] = 16
+                    optimized_op["execution_parameters"]["prefetch_distance"] = 2
+                    optimized_op["execution_parameters"]["use_warp_specialization"] = True
+                    
                 elif tensor_type == TensorType.CONV_FILTER:
                     optimized_op["execution_parameters"]["use_texture_memory"] = True
+                    # M3-specific: More aggressive filter caching
+                    optimized_op["execution_parameters"]["aggressive_filter_caching"] = True
+                    optimized_op["execution_parameters"]["use_winograd_convolution"] = True
+                    
+                # Enable vectorization for all operations on M3
+                optimized_op["execution_parameters"]["vectorize"] = True
+                
+                # Set M3-specific memory optimizations
+                if "memory_optimizations" not in optimized_op:
+                    optimized_op["memory_optimizations"] = {}
+                
+                # Apply dynamic caching optimization for high register usage operations
+                if tensor_type in [TensorType.MATRIX, TensorType.REDUCTION, TensorType.CONV_FILTER]:
+                    optimized_op["memory_optimizations"]["dynamic_caching"] = {
+                        "enabled": True,
+                        "priority": "high" if tensor_type == TensorType.MATRIX else "medium"
+                    }
+                
+                # Apply flexible memory optimizations
+                optimized_op["memory_optimizations"]["flexible_memory"] = {
+                    "enabled": True,
+                    "shared_memory_priority": "high" if tensor_type == TensorType.REDUCTION else "medium"
+                }
                 
                 optimized_ops.append(optimized_op)
             

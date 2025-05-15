@@ -8,6 +8,7 @@ This directory contains test tools for validating and benchmarking the Metal bac
 - `test_performance_benchmark.py`: Performance benchmarks for various operations
 - `compare_cuda_metal.py`: Tool to compare Metal and CUDA benchmark results
 - `check_environment.py`: Script to verify the test environment is correctly set up
+- `test_chip_compatibility.py`: Tests for validating Metal backend across Apple Silicon generations (M1/M2/M3)
 
 ## Requirements
 
@@ -86,6 +87,20 @@ python compare_cuda_metal.py --metal-results metal_benchmark_results.json --cuda
 
 This will generate comparison plots and a summary table in the specified output directory.
 
+## Chip Compatibility Tests
+
+The chip compatibility tests validate the Metal backend across different Apple Silicon generations (M1/M2/M3):
+
+```bash
+# Run compatibility tests
+python test_chip_compatibility.py
+
+# Run with verbose output
+python test_chip_compatibility.py --verbose
+```
+
+This will run tests tailored to each chip generation and verify that chip-specific optimizations are correctly applied.
+
 ## Example Workflow
 
 1. Check environment setup:
@@ -112,6 +127,11 @@ This will generate comparison plots and a summary table in the specified output 
 
 6. Analyze the comparison results and summary table.
 
+7. Verify chip-specific optimizations:
+   ```bash
+   python test_chip_compatibility.py --verbose
+   ```
+
 ## Adding New Tests
 
 To add new tests to the end-to-end test suite:
@@ -122,4 +142,9 @@ To add new tests to the end-to-end test suite:
 Similarly, to add new benchmarks:
 
 1. Add new benchmark methods to the `MetalBenchmark` class in `test_performance_benchmark.py`.
-2. Update the `run_all_benchmarks` method to include your new benchmarks. 
+2. Update the `run_all_benchmarks` method to include your new benchmarks.
+
+To add new chip compatibility tests:
+
+1. Add new test methods to the `ChipCompatibilityTester` class in `test_chip_compatibility.py`.
+2. Update the `_register_tests` method to include your new tests with appropriate minimum chip generation requirements. 

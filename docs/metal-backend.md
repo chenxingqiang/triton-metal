@@ -94,6 +94,6 @@ See the `third_party/metal/python/examples/` directory for complete examples:
 ### Reporting Problems
 
 If you encounter issues, please report them at:
-https://github.com/chengxingqiang/triton-matel/issues
+https://github.com/chengxingqiang/triton-metal/issues
 
 Include your system information, macOS version, and a minimal reproducing example. 

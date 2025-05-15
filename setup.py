@@ -793,7 +793,7 @@ PYTHON_CLASSIFIERS = [
 CLASSIFIERS = BASE_CLASSIFIERS + PYTHON_CLASSIFIERS
 
 setup(
-    name=os.environ.get("TRITON_WHEEL_NAME", "triton-matel"),
+    name=os.environ.get("TRITON_WHEEL_NAME", "triton-metal"),
     version=TRITON_VERSION,
     author="Cheng Xingqiang",
     author_email="chengxingqiang@example.com",
@@ -822,7 +822,7 @@ setup(
     zip_safe=False,
     # for PyPI
     keywords=["Compiler", "Deep Learning", "Metal", "Apple Silicon", "M3"],
-    url="https://github.com/chengxingqiang/triton-matel/",
+    url="https://github.com/chengxingqiang/triton-metal/",
     python_requires=PYTHON_REQUIRES,
     classifiers=CLASSIFIERS,
     test_suite="tests",

@@ -361,7 +361,7 @@ import triton.language as tl
 
 See the [Metal documentation](metal/python/docs/) and [examples](third_party/metal/python/examples/) for more details.
 
-# Triton-Matel: Enhanced Metal Backend for Triton
+# Triton-Metal: Enhanced Metal Backend for Triton
 
 This is Cheng Xingqiang's fork of Triton with enhanced Metal backend support for Apple Silicon GPUs. The focus of this repository is to provide optimized performance for ML workloads on M1, M2, and especially M3 chips.
 
@@ -378,7 +378,7 @@ This is Cheng Xingqiang's fork of Triton with enhanced Metal backend support for
 
 ```bash
 # Install from source with Metal support
-git clone https://github.com/chengxingqiang/triton-matel.git
-cd triton-matel
+git clone https://github.com/chengxingqiang/triton-metal.git
+cd triton-metal
 pip install -e ".[metal]"
 ```

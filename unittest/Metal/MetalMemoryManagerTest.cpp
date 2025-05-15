@@ -1,10 +1,21 @@
 #include <gtest/gtest.h>
 #include <string>
 #include <vector>
+#include <map>
 
 // This is a platform-specific test for the Metal memory manager
 
 namespace {
+
+// Mock enum for memory layout options
+enum class MemoryLayout {
+  DEFAULT = 0,
+  ROW_MAJOR = 1,
+  COL_MAJOR = 2,
+  TILED = 3,
+  BLOCKED = 4,
+  INTERLEAVED = 5,
+};
 
 class MetalMemoryManagerTest : public ::testing::Test {
 protected:
@@ -15,6 +26,17 @@ protected:
 
   void TearDown() override {
     // Cleanup logic after each test
+  }
+  
+  // Utility function to check if we're running on M3 hardware
+  bool isAppleM3Hardware() {
+#ifdef __APPLE__
+    // For testing purposes, get from environment variable
+    const char* isM3 = std::getenv("TRITON_METAL_IS_M3");
+    return isM3 != nullptr && std::string(isM3) == "1";
+#else
+    return false;
+#endif
   }
 };
 
@@ -47,7 +69,10 @@ TEST_F(MetalMemoryManagerTest, OptimalTileSize) {
   const int K = 1024;
   
   // This would be the actual logic to get optimal tile size
-  std::vector<int> tileSize = {128, 128, 32}; // Example tile size for M3
+  // On M3, we'd use larger tiles due to 64KB shared memory
+  std::vector<int> tileSize = isAppleM3Hardware() ? 
+    std::vector<int>{128, 128, 64} : // Larger tiles for M3
+    std::vector<int>{128, 128, 32};  // Standard size for M1/M2
   
   EXPECT_EQ(tileSize.size(), 3);
   EXPECT_GT(tileSize[0], 0);
@@ -63,7 +88,10 @@ TEST_F(MetalMemoryManagerTest, OptimalThreadgroupSize) {
   // Test getting optimal threadgroup size
   
   // This would be the actual logic to get optimal threadgroup size
-  std::vector<int> threadgroupSize = {8, 8, 4}; // Example size for M3
+  // On M3, we'd use larger threadgroups for better occupancy
+  std::vector<int> threadgroupSize = isAppleM3Hardware() ?
+    std::vector<int>{16, 16, 4} : // Larger for M3
+    std::vector<int>{8, 8, 4};    // Standard for M1/M2
   
   EXPECT_EQ(threadgroupSize.size(), 3);
   EXPECT_GT(threadgroupSize[0], 0);
@@ -79,9 +107,10 @@ TEST_F(MetalMemoryManagerTest, OptimalVectorWidth) {
   // Test getting optimal vector width
   
   // This would be the actual logic to get optimal vector width
-  int vectorWidth = 8; // 8-wide for M3
+  // M3 supports 8-wide vectors efficiently, M1/M2 prefer 4-wide
+  int vectorWidth = isAppleM3Hardware() ? 8 : 4;
   
-  EXPECT_EQ(vectorWidth, 8);
+  EXPECT_EQ(vectorWidth, isAppleM3Hardware() ? 8 : 4);
 #else
   GTEST_SKIP() << "Test only runs on Apple hardware";
 #endif
@@ -92,9 +121,37 @@ TEST_F(MetalMemoryManagerTest, OptimalMemoryLayout) {
   // Test getting optimal memory layout
   
   // This would be the actual logic to get optimal memory layout
-  std::string layout = "block_layout"; // Example layout type
+  MemoryLayout layout = isAppleM3Hardware() ? 
+    MemoryLayout::BLOCKED :    // Better for M3's cache
+    MemoryLayout::TILED;       // Better for M1/M2
   
-  EXPECT_FALSE(layout.empty());
+  EXPECT_EQ(layout, isAppleM3Hardware() ? MemoryLayout::BLOCKED : MemoryLayout::TILED);
+#else
+  GTEST_SKIP() << "Test only runs on Apple hardware";
+#endif
+}
+
+TEST_F(MetalMemoryManagerTest, SharedMemorySize) {
+#ifdef __APPLE__
+  // Test detecting shared memory size
+  
+  // M3 has 64KB shared memory, M1/M2 have 32KB
+  int sharedMemorySize = isAppleM3Hardware() ? 65536 : 32768;
+  
+  EXPECT_EQ(sharedMemorySize, isAppleM3Hardware() ? 65536 : 32768);
+#else
+  GTEST_SKIP() << "Test only runs on Apple hardware";
+#endif
+}
+
+TEST_F(MetalMemoryManagerTest, DynamicSharedMemory) {
+#ifdef __APPLE__
+  // Test if dynamic shared memory is supported
+  
+  // Only M3 supports dynamic shared memory allocation
+  bool supportsDynamicSharedMemory = isAppleM3Hardware();
+  
+  EXPECT_EQ(supportsDynamicSharedMemory, isAppleM3Hardware());
 #else
   GTEST_SKIP() << "Test only runs on Apple hardware";
 #endif

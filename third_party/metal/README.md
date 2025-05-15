@@ -1,123 +1,99 @@
 # Triton Metal Backend
 
-This is a Metal backend for Triton that enables running Triton kernels on Apple Silicon GPUs using the MLX framework.
+This directory contains the implementation of the Metal backend for Triton, targeting Apple Silicon GPUs (M1, M2, and M3).
 
 ## Overview
 
-The Triton Metal backend provides integration between Triton and Apple's Metal GPU framework through MLX. This enables efficient execution of Triton kernels on Apple Silicon GPUs, including M1, M2, and M3 chips.
+The Metal backend provides a high-performance implementation of Triton for Apple Silicon GPUs, with specific optimizations for the M3 architecture. The key features include:
 
-## Features
-
-- Support for Apple Silicon GPUs via Metal and MLX
-- Hardware detection for M1, M2, and M3 chips
-- Optimized operation mapping from Triton to MLX
-- Operation fusion for common patterns
-- Benchmarking tools to compare performance
-
-## Requirements
-
-- macOS running on Apple Silicon (M1, M2, or M3)
-- Python 3.8+
-- MLX (`pip install mlx`)
+- **M3-specific optimizations**: Takes advantage of 64KB shared memory, 8-wide vectors, and enhanced tensor cores
+- **MLX integration**: Integration with Apple's MLX framework for accelerated array computing
+- **Hardware detection**: Automatic detection and optimization for different Apple Silicon generations
+- **Memory optimization**: Specialized memory layout and management for optimal performance
+- **Tensor core acceleration**: Leverages M3's dedicated tensor cores for matrix operations
 
 ## Architecture
 
-The Metal backend consists of several components:
+The Metal backend follows a layered architecture:
 
-1. **Metal Driver**: Manages the connection to the Metal GPU and handles device capabilities
-2. **MLX Backend**: Compiles Triton kernels to MLX operations
-3. **Metal Executor**: Executes the compiled kernels on the Metal GPU
-4. **Operation Mapping**: Maps Triton operations to MLX equivalents
-5. **Fusion Optimizer**: Identifies patterns of operations that can be fused together for better performance
+1. **TritonMetal Dialect**: MLIR dialect for Metal-specific operations and optimizations
+2. **Metal Backend**: Implementation of the Triton backend interface for Metal
+3. **Hardware-specific Optimizers**: Specialized optimizers for different Apple Silicon generations
+4. **MLX Integration**: Integration with MLX for accelerated array computing
+5. **Tensor Core Utilization**: Special paths for utilizing M3 tensor cores
 
-## Performance
+## Testing Framework
 
-Benchmark results show competitive performance against PyTorch's MPS backend, with an average 1.24x speedup on an M3 chip for common operations including:
+The Metal backend includes a comprehensive testing framework:
 
-- Matrix multiplication
-- Element-wise operations (add, mul, exp, tanh)
-- Reduction operations (sum, mean)
-- Softmax
-- Attention mechanism
+1. **Dialect-level Tests**: Tests for the Metal dialect operations and transformations
+2. **Backend-level Tests**: Tests for the Metal backend implementation
+3. **Integration Tests**: Tests for the integration with MLX
+4. **Hardware-specific Tests**: Tests targeting specific Apple Silicon generations
+5. **Tensor Core Tests**: Tests for M3 tensor core utilization
 
-## Project Structure
+For more details on the testing framework, see [TESTING.md](python/docs/TESTING.md).
 
-```
-metal/
-├── backend/
-│   ├── driver.py           # Metal driver implementation
-│   ├── mlx_backend.py      # MLX backend compiler
-│   └── executor.py         # Kernel execution engine
-├── include/
-│   └── triton/
-│       └── Dialect/
-│           └── TritonMetal/
-│               ├── IR/     # Metal dialect IR definitions
-│               └── Transforms/ # Metal-specific transformations
-├── python/
-│   ├── metal_hardware_optimizer.py  # Hardware detection and optimization
-│   ├── operation_mapping.py         # Triton to MLX operation mapping
-│   ├── metal_fusion_optimizer.py    # Operation fusion patterns
-│   ├── benchmark/                   # Benchmarking tools
-│   └── test/                        # Unit tests
-└── CMakeLists.txt                   # Build configuration
-```
+## M3 Optimizations
 
-## Usage
+The Metal backend includes several optimizations specific to the M3 chip:
 
-To use the Metal backend in your Triton code:
+1. **Larger shared memory**: Utilizes 64KB shared memory for larger tiles and better data reuse
+2. **Wider vector operations**: Takes advantage of 8-wide vector operations for improved throughput
+3. **Tensor core support**: Uses enhanced tensor cores for matrix operations
+4. **Dynamic caching**: Leverages improved cache management for better performance
 
-```python
-import triton
-import triton.language as tl
+### Tensor Core Acceleration
 
-# Set backend to Metal
-os.environ["TRITON_BACKEND"] = "metal"
+The M3 chip includes dedicated tensor cores that can significantly accelerate matrix operations. The Metal backend includes specialized code paths to detect and utilize these tensor cores when available. Key features include:
 
-# Define a simple kernel
-@triton.jit
-def add_kernel(x_ptr, y_ptr, output_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
-    pid = tl.program_id(axis=0)
-    block_start = pid * BLOCK_SIZE
-    offsets = block_start + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-    
-    x = tl.load(x_ptr + offsets, mask=mask)
-    y = tl.load(y_ptr + offsets, mask=mask)
-    
-    output = x + y
-    
-    tl.store(output_ptr + offsets, output, mask=mask)
+- Automatic detection of tensor core availability
+- Optimal matrix dimension selection for tensor core operations
+- Mixed precision support (FP16 computation with FP32 accumulation)
+- Automatic fallback to standard implementation when tensor cores aren't beneficial
 
-# Execute as usual
-grid = (triton.cdiv(n_elements, 128),)
-add_kernel[grid](x, y, output, n_elements, BLOCK_SIZE=128)
+## Building and Running
+
+The Metal backend can be built as part of the Triton project. It requires:
+
+- macOS with Xcode 15.0 or later
+- Apple Silicon Mac (M1, M2, or M3)
+- CMake 3.20 or later
+
+To build:
+
+```bash
+mkdir build
+cd build
+cmake -DTRITON_ENABLE_METAL=ON ..
+make -j$(nproc)
 ```
 
-## Limitations
+To run the Metal tests:
 
-- Not all Triton operations are currently supported
-- Complex memory access patterns may not be optimized
-- Current implementation focuses on the most common operations
-- Feature parity with CUDA backend is a work in progress
+```bash
+cd build
+./run_metal_tests
+```
 
-## Future Work
+## Directory Structure
 
-- Improve operation coverage
-- Enhance fusion patterns for higher performance
-- Support for more complex memory patterns
-- Better integration with Metal Performance Shaders
-- Support for advanced M3 features (Dynamic Caching)
+```
+third_party/metal/
+├── backend/                     # Metal backend implementation
+├── include/                     # Metal backend headers
+│   └── triton/                  # Triton interface headers
+├── language/                    # Metal language bindings
+│   └── metal/                   # Metal-specific language implementation
+├── python/                      # Python bindings for the Metal backend
+│   ├── benchmark/               # Benchmarking tools
+│   ├── docs/                    # Documentation
+│   ├── examples/                # Example kernels
+│   ├── tests/                   # Python tests
+│   └── tools/                   # Python tools
+└── README.md                    # This file
+```
 
-## Development
+## Contributing
 
-To contribute to the Metal backend:
-
-1. Clone the repository
-2. Install the development requirements
-3. Run the tests: `python -m third_party.metal.python.test_metal_backend`
-4. Run the benchmarks: `python -m third_party.metal.python.benchmark.metal_backend_benchmark`
-
-## License
-
-This project is part of Triton and follows the same license. 
+For details on how to contribute to the Metal backend, see [CONTRIBUTING.md](../CONTRIBUTING.md). 

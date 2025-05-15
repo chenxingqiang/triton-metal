@@ -64,16 +64,21 @@ def check_metal_hardware() -> bool:
     # Try to import PyMetal or MLX to check Metal support
     try:
         import mlx.core as mx
-        device = mx.get_default_device()
-        device_str = str(device)
         
-        print(f"Default device: {device_str}")
-        
-        if "apple" in device_str.lower():
+        # Check if running on Apple Silicon using MLX
+        # MLX only runs on Metal, so if we can create an array and execute an operation,
+        # it means Metal hardware is available
+        try:
+            # Create a small array and perform a simple operation
+            a = mx.array([1, 2, 3])
+            b = a + 1
+            # Force execution by converting to numpy
+            import numpy as np
+            np.array(b)
             print("✅ Metal hardware is available")
             return True
-        else:
-            print("❌ Metal hardware is not available")
+        except Exception as e:
+            print(f"❌ Metal hardware execution failed: {e}")
             return False
     except ImportError:
         print("⚠️ Could not check Metal hardware (MLX not installed)")
