@@ -8,7 +8,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "triton-metal"
-version = "3.3.0rc1"
+version = "3.3.0rc2"
 description = "Enhanced Triton with Metal backend for Apple Silicon GPUs"
 readme = "README.md"
 authors = [

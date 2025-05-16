@@ -1,4 +1,0 @@
-operation: reduction_direct_atomic
-input_size: 102400
-iterations: 5
-time_ms: 261.8746036297646

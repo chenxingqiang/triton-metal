@@ -1,4 +1,0 @@
-operation: reduction_hierarchical
-input_size: 102400
-iterations: 5
-time_ms: 591.4343114062533

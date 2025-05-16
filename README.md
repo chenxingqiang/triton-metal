@@ -1,6 +1,3 @@
-<div align="center">
-  <img src="https://lh5.googleusercontent.com/wzQKEsTFkrgNQO9JjhGH5wFvslJr1saLtLaJ_a6Fp_gNENpvt3VG7BmztwngU9hFJaU4CPwGiw1opQtDvTkLrxWRbO_a12Q-pdESWHgtmheIHcPbOL5ZMC4TSiJVe5ty1w=w3517" alt="Triton logo">
-</div>
 
 | **`Documentation`** | **`PyPI`** | **`License`** |
 |-------------------- |----------- |-------------- |
@@ -26,6 +23,15 @@ For the full functionality with Metal backend, install with the metal extras:
 
 ```shell
 pip install "triton-metal[metal]"
+```
+
+## Using the Package
+
+After installation, you can import the package as `triton` (not `triton_metal`):
+
+```python
+import triton
+import triton.language as tl
 ```
 
 Binary wheels are available for:
