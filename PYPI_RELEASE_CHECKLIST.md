@@ -30,7 +30,7 @@
   - [ ] Run: `./scripts/publish_to_pypi.sh` and select option 1
   - [ ] Verify installation from TestPyPI:
     ```
-    pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ triton-metal[metal]
+    pip install --extra-index-url https://pypi.org/simple/ triton-metal[metal]
     ```
   - [ ] Test basic functionality
 

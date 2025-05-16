@@ -65,8 +65,9 @@ metal = [
 packages = ["triton_metal"]
 package-dir = {"" = "python"}
 
-[tool.setuptools.dynamic]
-version = {attr = "get_version()"}
+# Remove dynamic version configuration and rely on the static version
+# [tool.setuptools.dynamic]
+# version = {attr = "get_version()"}
 
 [project.entry-points."triton_metal.backends"]
 nvidia = "triton_metal.backends.nvidia"
