@@ -160,10 +160,10 @@ To leverage M3-specific optimizations, no special code is required. When running
 Example:
 
 ```python
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 
-@triton.jit
+@triton_metal.jit
 def my_kernel(...):
     # Kernel code
     ...
@@ -186,4 +186,4 @@ Future improvements to M3-specific optimizations include:
 - [Apple Silicon GPU Architecture Overview](https://developer.apple.com/documentation/metal/metal_sample_code_library/rendering_terrain_dynamically_with_argument_buffers)
 - [Metal Shader Language Specification](https://developer.apple.com/metal/Metal-Shading-Language-Specification.pdf)
 - [MLX Documentation](https://github.com/ml-explore/mlx)
-- [Triton Programming Guide](https://triton-lang.org/main/programming-guide/index.html) 
+- [Triton Programming Guide](https://chenxingqiang.github.io/triton-metalmain/programming-guide/index.html) 

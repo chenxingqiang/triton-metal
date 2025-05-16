@@ -1,14 +1,14 @@
 import torch
 import pathlib
 
-import triton
-import triton.language as tl
-import triton.profiler.language as pl
+import triton_metal
+import triton_metal.language as tl
+import triton_metal.profiler.language as pl
 
 
 def test_proton_record(tmp_path: pathlib.Path):
 
-    @triton.jit
+    @triton_metal.jit
     def add_kernel(
         x_ptr,
         y_ptr,

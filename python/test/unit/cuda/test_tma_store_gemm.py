@@ -23,11 +23,11 @@ import pytest
 import torch
 from torch.testing import assert_close
 
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 
 
-@triton.jit
+@triton_metal.jit
 def matmul_tma_load_store(  #
         a_ptr, b_ptr, c_ptr,  #
         M, N, K,  #

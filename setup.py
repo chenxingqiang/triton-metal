@@ -15,6 +15,7 @@ from io import BytesIO
 from distutils.command.clean import clean
 from pathlib import Path
 from typing import Optional
+import ssl
 
 from setuptools import Extension, find_packages, setup
 from setuptools.command.build_ext import build_ext
@@ -91,7 +92,7 @@ class BackendInstaller:
         for file in ["compiler.py", "driver.py"]:
             assert os.path.exists(os.path.join(backend_path, file)), f"${file} does not exist in ${backend_path}"
 
-        install_dir = os.path.join(os.path.dirname(__file__), "python", "triton", "backends", backend_name)
+        install_dir = os.path.join(os.path.dirname(__file__), "python", "triton_metal", "backends", backend_name)
 
         return Backend(name=backend_name, src_dir=backend_src_dir, backend_dir=backend_path, language_dir=language_dir,
                        tools_dir=tools_dir, install_dir=install_dir, is_external=is_external)
@@ -235,7 +236,7 @@ def get_llvm_package_info():
     name = f"llvm-{rev}-{system_suffix}"
     # Create a stable symlink that doesn't include revision
     sym_name = f"llvm-{system_suffix}"
-    url = f"https://oaitriton.blob.core.windows.net/public/llvm-builds/{name}.tar.gz"
+    url = f"https://oaitriton_metal.blob.core.windows.net/public/llvm-builds/{name}.tar.gz"
     return Package("llvm", name, url, "LLVM_INCLUDE_DIRS", "LLVM_LIBRARY_DIR", "LLVM_SYSPATH", sym_name=sym_name)
 
 
@@ -245,8 +246,41 @@ def open_url(url):
         'User-Agent': user_agent,
     }
     request = urllib.request.Request(url, None, headers)
-    # Set timeout to 300 seconds to prevent the request from hanging forever.
-    return urllib.request.urlopen(request, timeout=300)
+    
+    try:
+        # First try with SSL verification
+        return urllib.request.urlopen(request, timeout=300)
+    except (urllib.error.URLError, ssl.SSLError) as e:
+        print(f"SSL error encountered: {e}. Retrying with SSL verification disabled...")
+        try:
+            # Create a context that doesn't verify certificates
+            context = ssl._create_unverified_context()
+            return urllib.request.urlopen(request, context=context, timeout=300)
+        except Exception as e2:
+            # If that also fails, try using the fallback script
+            print(f"error: {e2}")
+            # Try to use the fallback script if it exists for LLVM downloads
+            if "llvm-builds" in url:
+                print(f"Attempting to download using fallback script...")
+                fallback_script = os.path.join(os.path.dirname(__file__), "scripts", "download_llvm_fallback.sh")
+                if os.path.exists(fallback_script):
+                    try:
+                        # Extract the filename from the URL
+                        filename = url.split("/")[-1]
+                        local_path = os.path.join(get_triton_cache_path(), filename)
+                        
+                        # Run the fallback script
+                        subprocess.check_call(["bash", fallback_script, url, local_path])
+                        
+                        # If successful, return a file-like object from the downloaded file
+                        if os.path.exists(local_path):
+                            print(f"Successfully downloaded using fallback script to {local_path}")
+                            return open(local_path, "rb")
+                    except subprocess.CalledProcessError as e:
+                        print(f"Fallback script failed: {e}")
+            
+            # If we get here, all methods failed
+            raise Exception(f"Failed to download {url}: {e2}")
 
 
 # ---- package data ---
@@ -615,44 +649,53 @@ def get_package_dirs():
         if backend.is_external:
             continue
 
-        yield (f"triton.backends.{backend.name}", backend.backend_dir)
+        yield (f"triton_metal.backends.{backend.name}", backend.backend_dir)
 
         if backend.language_dir:
             # Install the contents of each backend's `language` directory into
-            # `triton.language.extra`.
+            # `triton_metal.language.extra`.
             for x in os.listdir(backend.language_dir):
-                yield (f"triton.language.extra.{x}", os.path.join(backend.language_dir, x))
+                yield (f"triton_metal.language.extra.{x}", os.path.join(backend.language_dir, x))
 
         if backend.tools_dir:
             # Install the contents of each backend's `tools` directory into
-            # `triton.tools.extra`.
+            # `triton_metal.tools.extra`.
             for x in os.listdir(backend.tools_dir):
-                yield (f"triton.tools.extra.{x}", os.path.join(backend.tools_dir, x))
+                yield (f"triton_metal.tools.extra.{x}", os.path.join(backend.tools_dir, x))
 
     if check_env_flag("TRITON_BUILD_PROTON", "ON"):  # Default ON
-        yield ("triton.profiler", "third_party/proton/proton")
+        yield ("triton_metal.profiler", "third_party/proton/proton")
 
 
 def get_packages():
-    yield from find_packages(where="python")
-
+    """Return packages to distribute"""
+    base_packages = [
+        "triton_metal",
+        "triton_metal.language",
+        "triton_metal.runtime",
+        "triton_metal.backends",
+        "triton_metal.tools", 
+        "triton_metal.profiler",
+        "triton_metal.examples"
+    ]
+    
+    # Add backend packages
     for backend in backends:
-        yield f"triton.backends.{backend.name}"
+        base_packages.append(f"triton_metal.backends.{backend.name}")
 
         if backend.language_dir:
             # Install the contents of each backend's `language` directory into
-            # `triton.language.extra`.
+            # `triton_metal.language.extra`.
             for x in os.listdir(backend.language_dir):
-                yield f"triton.language.extra.{x}"
+                base_packages.append(f"triton_metal.language.extra.{x}")
 
         if backend.tools_dir:
             # Install the contents of each backend's `tools` directory into
-            # `triton.tools.extra`.
+            # `triton_metal.tools.extra`.
             for x in os.listdir(backend.tools_dir):
-                yield f"triton.tools.extra.{x}"
+                base_packages.append(f"triton_metal.tools.extra.{x}")
 
-    if check_env_flag("TRITON_BUILD_PROTON", "ON"):  # Default ON
-        yield "triton.profiler"
+    return base_packages
 
 
 def add_link_to_backends(external_only):
@@ -664,8 +707,8 @@ def add_link_to_backends(external_only):
 
         if backend.language_dir:
             # Link the contents of each backend's `language` directory into
-            # `triton.language.extra`.
-            extra_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "python", "triton", "language",
+            # `triton_metal.language.extra`.
+            extra_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "python", "triton_metal", "language",
                                                      "extra"))
             for x in os.listdir(backend.language_dir):
                 src_dir = os.path.join(backend.language_dir, x)
@@ -674,8 +717,8 @@ def add_link_to_backends(external_only):
 
         if backend.tools_dir:
             # Link the contents of each backend's `tools` directory into
-            # `triton.tools.extra`.
-            extra_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "python", "triton", "tools", "extra"))
+            # `triton_metal.tools.extra`.
+            extra_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "python", "triton_metal", "tools", "extra"))
             for x in os.listdir(backend.tools_dir):
                 src_dir = os.path.join(backend.tools_dir, x)
                 install_dir = os.path.join(extra_dir, x)
@@ -684,7 +727,7 @@ def add_link_to_backends(external_only):
 
 def add_link_to_proton():
     proton_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "third_party", "proton", "proton"))
-    proton_install_dir = os.path.join(os.path.dirname(__file__), "python", "triton", "profiler")
+    proton_install_dir = os.path.join(os.path.dirname(__file__), "python", "triton_metal", "profiler")
     update_symlink(proton_install_dir, proton_dir)
 
 
@@ -739,42 +782,70 @@ class plugin_sdist(sdist):
 
 
 def get_entry_points():
-    entry_points = {}
-    if check_env_flag("TRITON_BUILD_PROTON", "ON"):  # Default ON
-        entry_points["console_scripts"] = [
-            "proton-viewer = triton.profiler.viewer:main",
-            "proton = triton.profiler.proton:main",
+    """Return package entry points"""
+    return {
+        'triton_metal.backends': [
+            'nvidia = triton_metal.backends.nvidia', 
+            'amd = triton_metal.backends.amd', 
+            'metal = triton_metal.backends.metal'
         ]
-    entry_points["triton.backends"] = [f"{b.name} = triton.backends.{b.name}" for b in backends]
-    return entry_points
+    }
+
+
+def get_scripts():
+    """Return package scripts"""
+    return [
+        'proton-viewer = triton_metal.profiler.viewer:main',
+        'proton = triton_metal.profiler.proton:main'
+    ]
 
 
 def get_git_commit_hash(length=8):
     try:
-        cmd = ['git', 'rev-parse', f'--short={length}', 'HEAD']
-        return "+git{}".format(subprocess.check_output(cmd).strip().decode('utf-8'))
-    except Exception:
-        return ""
+        git_hash = subprocess.check_output(['git', 'rev-parse', 'HEAD']).decode('ascii').strip()
+        return git_hash[:length]
+    except (subprocess.SubprocessError, FileNotFoundError):
+        print("Warning: Not in a git repository or git not found. Using placeholder hash.")
+        return "00000000"  # Placeholder hash when git is not available
 
 
 def get_git_branch():
     try:
-        cmd = ['git', 'rev-parse', '--abbrev-ref', 'HEAD']
-        return subprocess.check_output(cmd).strip().decode('utf-8')
-    except Exception:
-        return ""
+        return subprocess.check_output(['git', 'rev-parse', '--abbrev-ref', 'HEAD']).decode('ascii').strip()
+    except (subprocess.SubprocessError, FileNotFoundError):
+        print("Warning: Not in a git repository or git not found. Using 'main' as branch.")
+        return "main"  # Default branch when git is not available
 
 
 def get_git_version_suffix():
-    branch = get_git_branch()
-    if branch.startswith("release"):
+    # When building from sdist or in environments without git, don't add any suffix
+    if not os.path.exists(".git"):
         return ""
-    else:
-        return get_git_commit_hash()
+    
+    try:
+        is_dirty = bool(subprocess.check_output(['git', 'status', '--porcelain']).decode('ascii').strip())
+        if is_dirty:
+            return f"+{get_git_commit_hash()}.dirty"
+        else:
+            try:
+                last_tag = subprocess.check_output(['git', 'describe', '--abbrev=0']).decode('ascii').strip()
+                is_exact_tag = bool(
+                    subprocess.check_output(['git', 'describe', '--exact-match', 'HEAD'], stderr=subprocess.DEVNULL)
+                    .decode('ascii')
+                    .strip())
+                if is_exact_tag:
+                    return ""
+                else:
+                    return f"+{get_git_commit_hash(4)}"
+            except subprocess.SubprocessError:
+                return f"+{get_git_commit_hash(4)}"
+    except (subprocess.SubprocessError, FileNotFoundError):
+        print("Warning: Not in a git repository or git not found. Not adding version suffix.")
+        return ""  # No suffix when git is not available
 
 
 # keep it separate for easy substitution
-TRITON_VERSION = "3.3.0+metal" + get_git_version_suffix() + os.environ.get("TRITON_WHEEL_VERSION_SUFFIX", "")
+TRITON_VERSION = "3.3.0+metal"  # Fixed version without git hash for stable release
 
 # Dynamically define supported Python versions and classifiers
 MIN_PYTHON = (3, 9)
@@ -786,28 +857,42 @@ BASE_CLASSIFIERS = [
     "Intended Audience :: Developers",
     "Topic :: Software Development :: Build Tools",
     "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS :: MacOS X",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: Implementation :: CPython",
 ]
 PYTHON_CLASSIFIERS = [
     f"Programming Language :: Python :: {MIN_PYTHON[0]}.{m}" for m in range(MIN_PYTHON[1], MAX_PYTHON[1] + 1)
 ]
 CLASSIFIERS = BASE_CLASSIFIERS + PYTHON_CLASSIFIERS
 
+# Read README.md for long description
+with open("README.md", encoding="utf-8") as f:
+    long_description = f.read()
+
 setup(
     name=os.environ.get("TRITON_WHEEL_NAME", "triton-metal"),
     version=TRITON_VERSION,
     author="Cheng Xingqiang",
-    author_email="chengxingqiang@example.com",
+    author_email="chenxingqiang@gmail.com",
     description="A Metal backend for Triton on Apple Silicon GPUs",
-    long_description="Triton with enhanced Metal backend for Apple Silicon GPUs, supporting M1, M2, and M3 chips with optimized performance.",
+    long_description=long_description,
+    long_description_content_type="text/markdown",
     install_requires=[
         "setuptools>=40.8.0",
         "importlib-metadata; python_version < '3.10'",
     ],
     packages=list(get_packages()),
     package_dir=dict(get_package_dirs()),
-    entry_points=get_entry_points(),
+    entry_points={
+        'triton_metal.backends': [
+            'nvidia = triton_metal.backends.nvidia', 
+            'amd = triton_metal.backends.amd', 
+            'metal = triton_metal.backends.metal'
+        ]
+    },
     include_package_data=True,
-    ext_modules=[CMakeExtension("triton", "triton/_C/")],
+    ext_modules=[CMakeExtension("triton_metal", "triton_metal/_C/")],
     cmdclass={
         "bdist_wheel": plugin_bdist_wheel,
         "build_ext": CMakeBuild,
@@ -821,11 +906,15 @@ setup(
     },
     zip_safe=False,
     # for PyPI
-    keywords=["Compiler", "Deep Learning", "Metal", "Apple Silicon", "M3"],
+    keywords=["Compiler", "Deep Learning", "Metal", "Apple Silicon", "M3", "GPU", "MLX"],
     url="https://github.com/chengxingqiang/triton-metal/",
+    project_urls={
+        "Documentation": "https://chenxingqiang.github.io/triton-metal/",
+        "Source": "https://github.com/chengxingqiang/triton-metal/",
+        "Tracker": "https://github.com/chengxingqiang/triton-metal/issues",
+    },
     python_requires=PYTHON_REQUIRES,
     classifiers=CLASSIFIERS,
-    test_suite="tests",
     extras_require={
         "build": [
             "cmake>=3.20",

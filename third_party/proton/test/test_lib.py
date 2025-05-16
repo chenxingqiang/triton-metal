@@ -1,8 +1,8 @@
 import pathlib
 import pytest
 
-import triton._C.libproton.proton as libproton
-from triton.profiler.profile import _select_backend
+import triton_metal._C.libproton.proton as libproton
+from triton_metal.profiler.profile import _select_backend
 
 
 def test_record():

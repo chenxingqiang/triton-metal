@@ -1,4 +1,4 @@
-from triton.backends.compiler import BaseBackend, GPUTarget
+from triton_metal.backends.compiler import BaseBackend, GPUTarget
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Union
 from types import ModuleType
@@ -221,7 +221,7 @@ class MetalBackend(BaseBackend):
         """Implementation of Triton IR optimization"""
         try:
             # Apply target-specific optimizations to the IR
-            from triton.compiler.compiler import optimize_ir_for_backend
+            from triton_metal.compiler.compiler import optimize_ir_for_backend
             optimized_src = optimize_ir_for_backend(src, self.target, options)
 
             # Store options in metadata for later stages

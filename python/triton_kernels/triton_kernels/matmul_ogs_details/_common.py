@@ -1,12 +1,12 @@
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 
 # -----------------------------------------------------------------------------
 #                                  Utilities
 # -----------------------------------------------------------------------------
 
 
-@triton.jit
+@triton_metal.jit
 def xcd_swizzle(pid, domain_size, XCD_SWIZZLE: tl.constexpr):
     """
     Swizzle the program id based on integer XCD_SWIZZLE.
@@ -29,7 +29,7 @@ def xcd_swizzle(pid, domain_size, XCD_SWIZZLE: tl.constexpr):
     return new_pid
 
 
-@triton.jit
+@triton_metal.jit
 def swizzle2d(pid, grid_m, grid_n, GROUP_M: tl.constexpr):
     width = GROUP_M * grid_n
     group_id = pid // width

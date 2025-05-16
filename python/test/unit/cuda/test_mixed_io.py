@@ -2,8 +2,8 @@ import pytest
 import torch
 from torch.testing import assert_close
 
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 
 dtype_mapping = {
     'float16': torch.float16,
@@ -11,7 +11,7 @@ dtype_mapping = {
 }
 
 
-@triton.jit
+@triton_metal.jit
 def add_kernel(
     x_ptr,
     y_ptr,
@@ -42,7 +42,7 @@ def test_add(SIZE, BLOCK_SIZE, dtype_str):
     y = torch.randn(SIZE, device='cuda', dtype=dtype)
 
     def grid(meta):
-        return (triton.cdiv(SIZE, meta['BLOCK_SIZE']), )
+        return (triton_metal.cdiv(SIZE, meta['BLOCK_SIZE']), )
 
     add_kernel[grid](x, y, output, SIZE, BLOCK_SIZE=BLOCK_SIZE)
 
@@ -51,7 +51,7 @@ def test_add(SIZE, BLOCK_SIZE, dtype_str):
     assert_close(output, output_torch, rtol=1e-2, atol=1e-3, check_dtype=False)
 
 
-@triton.jit
+@triton_metal.jit
 def load_reduce_kernel(
     x_ptr,
     y_ptr,

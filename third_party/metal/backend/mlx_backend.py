@@ -16,9 +16,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import hardware capabilities
 try:
-    from python.metal_hardware_optimizer import hardware_capabilities, AppleSiliconGeneration
-    from python.operation_mapping import MLXDispatcher, OpCategory
-    from python.metal_fusion_optimizer import FusionOptimizer
+    from MLX.metal_hardware_optimizer import hardware_capabilities, AppleSiliconGeneration
+    from MLX.operation_mapping import MLXDispatcher, OpCategory
+    from MLX.metal_fusion_optimizer import FusionOptimizer
 except ImportError as e:
     print(f"Error importing required modules: {e}")
 

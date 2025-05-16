@@ -1,8 +1,8 @@
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 
 
-@triton.jit
+@triton_metal.jit
 def _weight_transpose(
     M: tl.constexpr,
     N: tl.constexpr,

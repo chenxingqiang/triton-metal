@@ -40,10 +40,10 @@ import os
 # Set this before importing Triton
 os.environ["TRITON_BACKEND"] = "metal"
 
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 
-@triton.jit
+@triton_metal.jit
 def my_kernel(
     # Kernel definition here
     ...

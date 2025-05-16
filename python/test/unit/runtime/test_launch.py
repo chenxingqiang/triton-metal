@@ -9,8 +9,8 @@ import tracemalloc
 
 import torch
 
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 
 # from typing import Tuple
 
@@ -32,20 +32,20 @@ def test_metadata() -> None:
         assert metadata["value"] == 6
         used_hook = True
 
-    @triton.jit(launch_metadata=_launch_metadata)
+    @triton_metal.jit(launch_metadata=_launch_metadata)
     def kernel(x):
         pass
 
     # launch kernel
-    triton.knobs.runtime.launch_enter_hook = hook
+    triton_metal.knobs.runtime.launch_enter_hook = hook
     kernel[(1, 3, 2)](6)
-    triton.knobs.runtime.launch_enter_hook = None
+    triton_metal.knobs.runtime.launch_enter_hook = None
     assert used_hook
 
 
 def test_memory_leak(device) -> None:
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(in_ptr0, out_ptr0, xnumel, XBLOCK: tl.constexpr):
         xnumel = 10
         xoffset = tl.program_id(0) * XBLOCK
@@ -80,10 +80,10 @@ def test_memory_leak(device) -> None:
 #         func_str = f"""
 #         import torch
 
-#         import triton
-#         import triton.language as tl
+#         import triton_metal
+#         import triton_metal.language as tl
 
-#         @triton.jit
+#         @triton_metal.jit
 #         def {kernel_name}({arg_str}):
 #             pass
 #         """
@@ -105,7 +105,7 @@ def test_memory_leak(device) -> None:
 #     def empty(*kernel_args: Tuple[torch.Tensor]):
 #         first_arg = kernel_args[0]
 #         n_elements = first_arg.numel()
-#         grid = (triton.cdiv(n_elements, 1024),)
+#         grid = (triton_metal.cdiv(n_elements, 1024),)
 #         device = torch.cuda.current_device()
 #         # Warmup
 #         empty_kernel[grid](*kernel_args, n_elements, BLOCK_SIZE=1024, device=device)

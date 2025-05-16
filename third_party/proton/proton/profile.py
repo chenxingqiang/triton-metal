@@ -1,10 +1,10 @@
 import functools
-import triton
+import triton_metal
 import os
 import pathlib
 
 from triton import knobs
-from triton._C.libproton import proton as libproton
+from triton_metal._C.libproton import proton as libproton
 from .hook import register_triton_hook, unregister_triton_hook
 from .flags import set_profiling_off, set_profiling_on, is_command_line
 from typing import Optional
@@ -13,7 +13,7 @@ DEFAULT_PROFILE_NAME = "proton"
 
 
 def _select_backend() -> str:
-    backend = triton.runtime.driver.active.get_current_target().backend
+    backend = triton_metal.runtime.driver.active.get_current_target().backend
     if backend == "cuda":
         return "cupti"
     elif backend == "hip":

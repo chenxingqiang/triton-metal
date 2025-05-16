@@ -6,13 +6,13 @@ This file demonstrates different reduction operations in Triton
 that would use the COALESCED memory layout in the Metal backend.
 """
 
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 import torch
 import argparse
 import time
 
-@triton.jit
+@triton_metal.jit
 def sum_reduction_kernel(
     input_ptr, output_ptr, 
     M, N,
@@ -41,7 +41,7 @@ def sum_reduction_kernel(
     # Store the result
     tl.store(output_ptr + pid, acc)
 
-@triton.jit
+@triton_metal.jit
 def max_reduction_kernel(
     input_ptr, output_ptr, 
     M, N,
@@ -70,7 +70,7 @@ def max_reduction_kernel(
     # Store the result
     tl.store(output_ptr + pid, acc)
 
-@triton.jit
+@triton_metal.jit
 def mean_reduction_kernel(
     input_ptr, output_ptr, 
     M, N,
@@ -102,7 +102,7 @@ def mean_reduction_kernel(
     # Store the result
     tl.store(output_ptr + pid, acc)
 
-@triton.jit
+@triton_metal.jit
 def multi_axis_reduction_kernel(
     input_ptr, output_ptr, 
     M, N, K,

@@ -38,7 +38,7 @@ def builtin(fn: T) -> T:
     @wraps(fn)
     def wrapper(*args, **kwargs):
         if "_builder" not in kwargs or kwargs["_builder"] is None:
-            raise ValueError("Did you forget to add @triton.jit ? "
+            raise ValueError("Did you forget to add @triton_metal.jit ? "
                              "(`_builder` argument must be provided outside of JIT functions.)")
         return fn(*args, **kwargs)
 
@@ -611,12 +611,12 @@ class dtype(base_type):
 
     @property
     def cache_key_part(self) -> str:
-        """See cache_key_part() in triton.cc."""
+        """See cache_key_part() in triton_metal.cc."""
         return self.name
 
     def __repr__(self):
         """Output of repr needs to be an evaluatable expression"""
-        return f'triton.language.{self.codegen_name()}'
+        return f'triton_metal.language.{self.codegen_name()}'
 
     def _unflatten_ir(self, handles: List[ir.value], cursor: int) -> Tuple[base_value, int]:
         return tensor(handles[cursor], self), cursor + 1
@@ -822,10 +822,10 @@ class tensor(base_value):
     """Represents an N-dimensional array of values or pointers.
 
     :code:`tensor` is the fundamental data structure in Triton programs.  Most
-    functions in :py:mod:`triton.language` operate on and return tensors.
+    functions in :py:mod:`triton_metal.language` operate on and return tensors.
 
     Most of the named member functions here are duplicates of the free functions
-    in :code:`triton.language`.  For example, :code:`triton.language.sqrt(x)` is
+    in :code:`triton_metal.language`.  For example, :code:`triton_metal.language.sqrt(x)` is
     equivalent to :code:`x.sqrt()`.
 
     :code:`tensor` also defines most of the magic/dunder methods, so you can
@@ -1992,10 +1992,10 @@ def load(pointer, mask=None, other=None, boundary_check=(), padding_option="", c
             - `boundary_check` and `padding_option` can be specified to control the behavior of out-of-bound access.
 
     :param pointer: Pointer to the data to be loaded
-    :type pointer: `triton.PointerType`, or block of `dtype=triton.PointerType`
+    :type pointer: `triton_metal.PointerType`, or block of `dtype=triton_metal.PointerType`
     :param mask: if `mask[idx]` is false, do not load the data at address `pointer[idx]`
         (must be `None` with block pointers)
-    :type mask: Block of `triton.int1`, optional
+    :type mask: Block of `triton_metal.int1`, optional
     :param other: if `mask[idx]` is false, return `other[idx]`
     :type other: Block, optional
     :param boundary_check: tuple of integers, indicating the dimensions which should do the boundary check
@@ -2067,11 +2067,11 @@ def store(pointer, value, mask=None, boundary_check=(), cache_modifier="", evict
     `value` is implicitly broadcast to `pointer.shape` and typecast to `pointer.dtype.element_ty`.
 
     :param pointer: The memory location where the elements of `value` are stored
-    :type pointer: `triton.PointerType`, or block of `dtype=triton.PointerType`
+    :type pointer: `triton_metal.PointerType`, or block of `dtype=triton_metal.PointerType`
     :param value: The tensor of elements to be stored
     :type value: Block
     :param mask: If `mask[idx]` is false, do not store `value[idx]` at `pointer[idx]`
-    :type mask: Block of triton.int1, optional
+    :type mask: Block of triton_metal.int1, optional
     :param boundary_check: tuple of integers, indicating the dimensions which should do the boundary check
     :type boundary_check: tuple of ints, optional
     :param cache_modifier: changes cache option in NVIDIA PTX
@@ -2148,7 +2148,7 @@ def make_tensor_descriptor(
     *******
     .. code-block:: python
 
-        @triton.jit
+        @triton_metal.jit
         def inplace_abs(in_out_ptr, M, N, M_BLOCK: tl.constexpr, N_BLOCK: tl.constexpr):
             desc = tl.make_tensor_descriptor(
                 in_out_ptr,
@@ -2167,7 +2167,7 @@ def make_tensor_descriptor(
         def alloc_fn(size: int, alignment: int, stream: Optional[int]):
             return torch.empty(size, device="cuda", dtype=torch.int8)
 
-        triton.set_allocator(alloc_fn)
+        triton_metal.set_allocator(alloc_fn)
 
         M, N = 256, 256
         x = torch.randn(M, N, device="cuda")
@@ -2193,7 +2193,7 @@ def _add_atomic_docstr(name: str, has_cmp: bool = False) -> Callable[[T], T]:
     Return the data stored at :code:`pointer` before the atomic operation.
 
     :param pointer: The memory locations to operate on
-    :type pointer: Block of dtype=triton.PointerDType"""
+    :type pointer: Block of dtype=triton_metal.PointerDType"""
         if has_cmp:
             docstr += """
     :param cmp: The values expected to be found in the atomic object
@@ -2315,13 +2315,13 @@ def where(condition, x, y, _builder=None):
 
     Note that :code:`x` and :code:`y` are always evaluated regardless of the value of :code:`condition`.
 
-    If you want to avoid unintended memory operations, use the :code:`mask` arguments in `triton.load` and `triton.store` instead.
+    If you want to avoid unintended memory operations, use the :code:`mask` arguments in `triton_metal.load` and `triton_metal.store` instead.
 
     The shape of :code:`x` and :code:`y` are both broadcast to the shape of :code:`condition`.
     :code:`x` and :code:`y` must have the same data type.
 
     :param condition: When True (nonzero), yield x, otherwise yield y.
-    :type condition: Block of triton.bool
+    :type condition: Block of triton_metal.bool
     :param x: values selected at indices where condition is True.
     :param y: values selected at indices where condition is False.
     """
@@ -2484,7 +2484,7 @@ def reduce(input, axis, combine_fn, keep_dims=False, _builder=None, _generator=N
     :type input: Tensor
     :param axis: the dimension along which the reduction should be done. If None, reduce all dimensions
     :type axis: int | None
-    :param combine_fn: a function to combine two groups of scalar tensors (must be marked with @triton.jit)
+    :param combine_fn: a function to combine two groups of scalar tensors (must be marked with @triton_metal.jit)
     :type combine_fn: Callable
     :param keep_dims: if true, keep the reduced dimensions with length 1
     :type keep_dims: bool
@@ -2583,7 +2583,7 @@ def associative_scan(input, axis, combine_fn, reverse=False, _builder=None, _gen
     :type input: Tensor
     :param axis: the dimension along which the reduction should be done
     :type axis: int
-    :param combine_fn: a function to combine two groups of scalar tensors (must be marked with @triton.jit)
+    :param combine_fn: a function to combine two groups of scalar tensors (must be marked with @triton_metal.jit)
     :type combine_fn: Callable
     :param reverse: whether to apply the associative scan in the reverse direction along axis
     :type reverse: bool
@@ -2775,7 +2775,7 @@ def device_print(prefix, *args, hex=False, _builder=None):
     .. highlight:: python
     .. code-block:: python
 
-        triton.runtime.driver.active.utils.set_printf_fifo_size(size_bytes)
+        triton_metal.runtime.driver.active.utils.set_printf_fifo_size(size_bytes)
 
     CUDA may raise an error if you try to change this value after running a
     kernel that uses printfs.  The value set here may only affect the current
@@ -2852,7 +2852,7 @@ def inline_asm_elementwise(asm: str, constraints: str, args: Sequence, dtype: Un
         .. highlight:: python
         .. code-block:: python
 
-            @triton.jit
+            @triton_metal.jit
             def kernel(A, B, C, D, BLOCK: tl.constexpr):
                 a = tl.load(A + tl.arange(0, BLOCK)) # uint8 tensor
                 b = tl.load(B + tl.arange(0, BLOCK)) # float32 tensor
@@ -2966,12 +2966,12 @@ class static_range:
     .. highlight:: python
     .. code-block:: python
 
-        @triton.jit
+        @triton_metal.jit
         def kernel(...):
             for i in tl.static_range(10):
                 ...
     :note: This is a special iterator used to implement similar semantics to Python's :code:`range` in the context of
-        :code:`triton.jit` functions. In addition, it also guides the compiler to unroll the loop aggressively.
+        :code:`triton_metal.jit` functions. In addition, it also guides the compiler to unroll the loop aggressively.
     :param arg1: the start value.
     :param arg2: the end value.
     :param step: the step value.
@@ -2993,10 +2993,10 @@ class static_range:
             self.end = arg2
 
     def __iter__(self):
-        raise RuntimeError("static_range can only be used in @triton.jit'd functions")
+        raise RuntimeError("static_range can only be used in @triton_metal.jit'd functions")
 
     def __next__(self):
-        raise RuntimeError("static_range can only be used in @triton.jit'd functions")
+        raise RuntimeError("static_range can only be used in @triton_metal.jit'd functions")
 
 
 class range:
@@ -3006,12 +3006,12 @@ class range:
     .. highlight:: python
     .. code-block:: python
 
-        @triton.jit
+        @triton_metal.jit
         def kernel(...):
             for i in tl.range(10, num_stages=3):
                 ...
     :note: This is a special iterator used to implement similar semantics to Python's :code:`range` in the context of
-        :code:`triton.jit` functions. In addition, it allows user to pass extra attributes to the compiler.
+        :code:`triton_metal.jit` functions. In addition, it allows user to pass extra attributes to the compiler.
     :param arg1: the start value.
     :param arg2: the end value.
     :param step: the step value.
@@ -3059,10 +3059,10 @@ class range:
         self.warp_specialize = warp_specialize
 
     def __iter__(self):
-        raise RuntimeError("tl.range can only be used in @triton.jit'd functions")
+        raise RuntimeError("tl.range can only be used in @triton_metal.jit'd functions")
 
     def __next__(self):
-        raise RuntimeError("tl.range can only be used in @triton.jit'd functions")
+        raise RuntimeError("tl.range can only be used in @triton_metal.jit'd functions")
 
 
 # -----------------------

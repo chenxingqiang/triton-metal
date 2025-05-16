@@ -1,11 +1,11 @@
 import pytest
 import subprocess
-from triton.profiler.viewer import get_min_time_flops, get_min_time_bytes, get_raw_metrics, format_frames, derive_metrics, filter_frames, parse
-from triton.profiler.hook import COMPUTE_METADATA_SCOPE_NAME
+from triton_metal.profiler.viewer import get_min_time_flops, get_min_time_bytes, get_raw_metrics, format_frames, derive_metrics, filter_frames, parse
+from triton_metal.profiler.hook import COMPUTE_METADATA_SCOPE_NAME
 import numpy as np
 
 file_path = __file__
-triton_example_file = file_path.replace("test_viewer.py", "examples/triton.json")
+triton_example_file = file_path.replace("test_viewer.py", "examples/triton_metal.json")
 cuda_example_file = file_path.replace("test_viewer.py", "examples/cuda.json")
 hip_example_file = file_path.replace("test_viewer.py", "examples/hip.json")
 frame_example_file = file_path.replace("test_viewer.py", "examples/frame.json")

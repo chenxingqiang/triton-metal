@@ -33,7 +33,7 @@ def TTG_TensorMemorySpace : AttrDef<TritonNvidiaGPU_Dialect, "TensorMemorySpace"
 
 def TTG_TensorMemoryEncodingAttr : AttrDef<TritonNvidiaGPU_Dialect, "TensorMemoryEncoding"> {
   let mnemonic = "tensor_memory_encoding";
-  let attrName = "triton.gpu.tensor_memory_encoding";
+  let attrName = "triton_metal.gpu.tensor_memory_encoding";
   let description = [{
     An encoding to represent the different way the tensor memory is laid out.
     `unpacked` attributes indicates whether types smaller than 32bits are unpacked (take full 32bits)
@@ -52,7 +52,7 @@ def TTG_TensorMemoryEncodingAttr : AttrDef<TritonNvidiaGPU_Dialect, "TensorMemor
 
 def TTG_TensorMemoryScalesEncodingAttr : AttrDef<TritonNvidiaGPU_Dialect, "TensorMemoryScalesEncoding"> {
   let mnemonic = "tensor_memory_scales_encoding";
-  let attrName = "triton.gpu.tensor_memory_scales_encoding";
+  let attrName = "triton_metal.gpu.tensor_memory_scales_encoding";
   let description = [{
     An encoding to represent the layout of tensor memory scales.
     As described in the PTX doc, blocked scales in TMEM must be in a special layout. They are organized

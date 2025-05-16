@@ -26,7 +26,7 @@ All tutorials require:
 Clone the repository and navigate to this directory:
 
 ```bash
-git clone https://github.com/openai/triton.git
+git clone https://github.com/chenxingqiang/triton-metal.git
 cd triton/third_party/metal/python/tutorials
 ```
 

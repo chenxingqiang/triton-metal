@@ -1,16 +1,16 @@
 import torch
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 
 size = 4096
 x = torch.rand(size, device='cuda')
 y = torch.rand(size, device='cuda')
 output = torch.empty_like(x)
 n_elements = output.numel()
-grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']), )
+grid = lambda meta: (triton_metal.cdiv(n_elements, meta['BLOCK_SIZE']), )
 
 
-@triton.jit
+@triton_metal.jit
 def add_kernel(
     x_ptr,
     y_ptr,

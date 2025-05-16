@@ -6,9 +6,9 @@ from argparse import ArgumentParser
 from pathlib import Path
 from typing import List
 
-import triton
-import triton.backends
-from triton.backends.nvidia.driver import ty_to_cpp
+import triton_metal
+import triton_metal.backends
+from triton_metal.backends.nvidia.driver import ty_to_cpp
 
 desc = """
 Triton ahead-of-time compiler:
@@ -22,7 +22,7 @@ or constexpr values, e.g.
 
 `compile.py --kernel-name kernel --signature "*fp32:16, i32:16, 1024, i32" --out-name kernel /path/to/kernel.py`
 
-will compile triton.JITFunction of name `kernel` inside the file `/path/to/kernel.py`.
+will compile triton_metal.JITFunction of name `kernel` inside the file `/path/to/kernel.py`.
 Said kernel will be specialized such that argument 0, 1 are assumed to be multiple of 16,
 and argument 2 is assumed to be a compile-time constant of value 1024, i.e. it won't be part of the generated prototype.
 
@@ -107,9 +107,9 @@ if __name__ == "__main__":
     for h in hints.values():
         assert h in [1, 16], f"Only 1 and 16 are valid hints, got {h}"
     attrs = {k: [["tt.divisibility", 16]] for k, v in hints.items() if v == 16}
-    src = triton.compiler.ASTSource(fn=kernel, constexprs=constants, signature=signature, attrs=attrs)
+    src = triton_metal.compiler.ASTSource(fn=kernel, constexprs=constants, signature=signature, attrs=attrs)
     opts = {"num_warps": args.num_warps, "num_stages": args.num_stages}
-    ccinfo = triton.compile(src, options=opts)
+    ccinfo = triton_metal.compile(src, options=opts)
     if ccinfo.metadata.global_scratch_size > 0:
         raise RuntimeError("AOT compiling kernels with global scratch requirements is not yet implemented")
 

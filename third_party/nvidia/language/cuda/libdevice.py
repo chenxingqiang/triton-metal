@@ -1,4 +1,4 @@
-from triton.language import core
+from triton_metal.language import core
 
 
 @core.extern

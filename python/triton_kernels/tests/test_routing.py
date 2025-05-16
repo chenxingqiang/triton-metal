@@ -71,7 +71,7 @@ def test_op(n_tokens, n_expts_tot, n_expts_act, block_m, device):
 
 
 def bench_routing():
-    import triton.profiler as proton
+    import triton_metal.profiler as proton
     n_tokens = 8192
     block_m = 128
     n_expts_tot, n_expts_act = 128, 4

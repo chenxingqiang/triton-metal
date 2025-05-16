@@ -1,19 +1,19 @@
-import triton
-import triton.language as tl
-from triton.backends.compiler import GPUTarget
+import triton_metal
+import triton_metal.language as tl
+from triton_metal.backends.compiler import GPUTarget
 import re
-from triton.compiler import ASTSource
+from triton_metal.compiler import ASTSource
 
 
 def test_compile_only_sm100() -> None:
 
-    @triton.jit
+    @triton_metal.jit
     def kernel_add(a, b, c):
         idx = tl.arange(0, 32)
         tl.store(c + idx, tl.load(a + idx) + tl.load(b + idx))
 
-    k = triton.compile(
-        triton.compiler.ASTSource(fn=kernel_add, signature={"a": "*fp32", "b": "*fp32", "c": "*fp32"}, constexprs={}),
+    k = triton_metal.compile(
+        triton_metal.compiler.ASTSource(fn=kernel_add, signature={"a": "*fp32", "b": "*fp32", "c": "*fp32"}, constexprs={}),
         target=GPUTarget("cuda", 100, 32))
     ptx = k.asm["ptx"]
     assert ".target sm_100a" in ptx
@@ -23,7 +23,7 @@ def test_compile_only_sm100() -> None:
 
 def test_compile_only_dot() -> None:
 
-    @triton.jit
+    @triton_metal.jit
     def simple_dot(a_base, b_base, out):
         SIZE: tl.constexpr = 64
         a_ptr = a_base + tl.arange(0, SIZE)[:, None] * SIZE + tl.arange(0, SIZE)[None, :]
@@ -34,8 +34,8 @@ def test_compile_only_dot() -> None:
         out_ptr = out + tl.arange(0, SIZE)[:, None] * SIZE + tl.arange(0, SIZE)[None, :]
         tl.store(out_ptr, c)
 
-    k = triton.compile(
-        triton.compiler.ASTSource(fn=simple_dot, signature={"a_base": "*fp16", "b_base": "*fp16", "out": "*fp16"},
+    k = triton_metal.compile(
+        triton_metal.compiler.ASTSource(fn=simple_dot, signature={"a_base": "*fp16", "b_base": "*fp16", "out": "*fp16"},
                                   constexprs={}), target=GPUTarget("cuda", 100, 32))
     ttgir = k.asm["ttgir"]
     pattern = (r"%(?P<A>\d+) = tt\.load"
@@ -78,7 +78,7 @@ def test_compile_only_dot() -> None:
 
 def test_compile_only_k_loop() -> None:
 
-    @triton.jit
+    @triton_metal.jit
     def k_loop(a_base, b_base, out, k_tiles):
         SIZE: tl.constexpr = 128
         offs_k = tl.arange(0, SIZE)
@@ -93,8 +93,8 @@ def test_compile_only_k_loop() -> None:
         out_ptr = out + tl.arange(0, SIZE)[:, None] * SIZE + tl.arange(0, SIZE)[None, :]
         tl.store(out_ptr, c)
 
-    k = triton.compile(
-        triton.compiler.ASTSource(fn=k_loop,
+    k = triton_metal.compile(
+        triton_metal.compiler.ASTSource(fn=k_loop,
                                   signature={"a_base": "*fp16", "b_base": "*fp16", "out": "*fp16", "k_tiles":
                                              "i32"}, constexprs={}), target=GPUTarget("cuda", 100, 32))
     ttgir = k.asm["ttgir"]
@@ -123,7 +123,7 @@ def test_compile_only_k_loop() -> None:
 
 def test_compile_only_dot_mxfp() -> None:
 
-    @triton.jit
+    @triton_metal.jit
     def simple_dot_mxfp(a_base, b_base, a_scale, b_scale, out, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr,
                         BLOCK_K: tl.constexpr):
         PACKED_BLOCK_K_A: tl.constexpr = BLOCK_K
@@ -143,8 +143,8 @@ def test_compile_only_dot_mxfp() -> None:
         out_ptr = out + tl.arange(0, BLOCK_M)[:, None] * BLOCK_N + tl.arange(0, BLOCK_N)[None, :]
         tl.store(out_ptr, c)
 
-    k = triton.compile(
-        triton.compiler.ASTSource(
+    k = triton_metal.compile(
+        triton_metal.compiler.ASTSource(
             fn=simple_dot_mxfp, signature={
                 "a_base": "*u8", "b_base": "*u8", "a_scale": "*u8", "b_scale": "*u8", "out": "*fp32", "BLOCK_M":
                 "constexpr", "BLOCK_N": "constexpr", "BLOCK_K": "constexpr"
@@ -165,7 +165,7 @@ def test_signature_ordering():
     fn.arg_names and not the signature.
     """
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(a, o, N: tl.constexpr):
         tl.store(o + N, tl.load(a + N))
 
@@ -180,5 +180,5 @@ def test_signature_ordering():
         constexprs={"N": 32},
         signature=signature,
     )
-    target = triton.runtime.driver.active.get_current_target()
-    triton.compile(src=src, target=target)
+    target = triton_metal.runtime.driver.active.get_current_target()
+    triton_metal.compile(src=src, target=target)

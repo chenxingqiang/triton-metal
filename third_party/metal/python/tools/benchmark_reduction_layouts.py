@@ -23,9 +23,9 @@ if parent_dir not in sys.path:
 # Try to import Metal backend components
 try:
     import torch
-    import triton
-    import triton.language as tl
-    from triton.runtime.jit import JITFunction
+    import triton_metal
+    import triton_metal.language as tl
+    from triton_metal.runtime.jit import JITFunction
     from metal_memory_manager import MemoryLayout
     
     METAL_BACKEND_AVAILABLE = True
@@ -49,7 +49,7 @@ def _color_text(text, color):
     }
     return f"{colors.get(color, '')}{text}{colors['ENDC']}"
 
-@triton.jit
+@triton_metal.jit
 def sum_reduction_kernel(
     input_ptr, output_ptr, 
     M, N,

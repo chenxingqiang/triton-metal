@@ -11,10 +11,10 @@ import sys
 import argparse
 import numpy as np
 
-# Try to import triton
+# Try to import triton_metal
 try:
-    import triton
-    import triton.language as tl
+    import triton_metal
+    import triton_metal.language as tl
     HAS_TRITON = True
 except ImportError:
     HAS_TRITON = False
@@ -26,21 +26,21 @@ def test_backend_registration():
     print("Testing Metal backend registration...")
     
     # Check if Metal backend is in the list of available backends
-    if 'metal' in triton.runtime.backends:
+    if 'metal' in triton_metal.runtime.backends:
         print("✅ Metal backend is registered!")
-        for name, backend in triton.runtime.backends.items():
+        for name, backend in triton_metal.runtime.backends.items():
             print(f"  - {name}: {backend}")
     else:
         print("❌ Metal backend is NOT registered!")
         print("Available backends:")
-        for name in triton.runtime.backends:
+        for name in triton_metal.runtime.backends:
             print(f"  - {name}")
 
 def test_simple_kernel():
     """Test a simple kernel using the Metal backend"""
     print("\nTesting a simple kernel with Metal backend...")
     
-    @triton.jit
+    @triton_metal.jit
     def add_kernel(x_ptr, y_ptr, output_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
         # Create block ID
         pid = tl.program_id(0)
@@ -72,9 +72,9 @@ def test_simple_kernel():
     output = np.zeros_like(x)
     
     # Move data to device
-    x_device = triton.testing.to_device(x)
-    y_device = triton.testing.to_device(y)
-    output_device = triton.testing.to_device(output)
+    x_device = triton_metal.testing.to_device(x)
+    y_device = triton_metal.testing.to_device(y)
+    output_device = triton_metal.testing.to_device(output)
     
     # Calculate grid dimensions
     grid = (n_elements + BLOCK_SIZE - 1) // BLOCK_SIZE
@@ -89,7 +89,7 @@ def test_simple_kernel():
         )
         
         # Get result back to host
-        result = triton.testing.to_numpy(output_device)
+        result = triton_metal.testing.to_numpy(output_device)
         
         # Verify result
         expected = x + y
@@ -113,7 +113,7 @@ def test_reduction_kernel():
     """Test a reduction kernel using the Metal backend"""
     print("\nTesting a reduction kernel with Metal backend...")
     
-    @triton.jit
+    @triton_metal.jit
     def reduce_kernel(x_ptr, output_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
         # Create block ID
         pid = tl.program_id(0)
@@ -143,8 +143,8 @@ def test_reduction_kernel():
     output = np.zeros(1, dtype=np.float32)
     
     # Move data to device
-    x_device = triton.testing.to_device(x)
-    output_device = triton.testing.to_device(output)
+    x_device = triton_metal.testing.to_device(x)
+    output_device = triton_metal.testing.to_device(output)
     
     # Calculate grid dimensions
     grid = (n_elements + BLOCK_SIZE - 1) // BLOCK_SIZE
@@ -159,7 +159,7 @@ def test_reduction_kernel():
         )
         
         # Get result back to host
-        result = triton.testing.to_numpy(output_device)
+        result = triton_metal.testing.to_numpy(output_device)
         
         # Verify result
         expected = np.sum(x)

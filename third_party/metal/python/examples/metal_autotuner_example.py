@@ -12,7 +12,7 @@ import argparse
 # Add parent directory to path to allow importing from metal_auto_tuner
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from metal_auto_tuner import (
+from MLX.metal_auto_tuner import (
     MetalAutoTuner,
     TunableParam,
     ParamType,
@@ -22,16 +22,16 @@ from metal_auto_tuner import (
 
 # Import Triton if available
 try:
-    import triton
-    import triton.language as tl
-    from triton.runtime import driver
+    import triton_metal
+    import triton_metal.language as tl
+    from triton_metal.runtime import driver
     HAS_TRITON = True
 except ImportError:
     HAS_TRITON = False
     print("Triton not available. Will run a simulated example.")
 
 # Matrix multiplication kernel
-@triton.jit
+@triton_metal.jit
 def matmul_kernel(
     # Pointers to matrices
     a_ptr, b_ptr, c_ptr,
@@ -152,7 +152,7 @@ def test_matmul(M, N, K, block_m, block_n, block_k, num_warps, num_stages, group
     
     # Launch kernel with given configuration
     grid = lambda meta: (
-        triton.cdiv(M, meta['BLOCK_M']) * triton.cdiv(N, meta['BLOCK_N']),
+        triton_metal.cdiv(M, meta['BLOCK_M']) * triton_metal.cdiv(N, meta['BLOCK_N']),
     )
     
     try:

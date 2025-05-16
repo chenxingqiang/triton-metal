@@ -26,8 +26,8 @@ except ImportError:
 
 # Try to import Triton
 try:
-    import triton
-    import triton.language as tl
+    import triton_metal
+    import triton_metal.language as tl
 except ImportError:
     print("Triton not found. Please install it with 'pip install triton'")
     sys.exit(1)
@@ -39,7 +39,7 @@ from metal_hardware_optimizer import hardware_capabilities, AppleSiliconGenerati
 os.environ["TRITON_BACKEND"] = "metal"
 
 # Define vector addition kernel
-@triton.jit
+@triton_metal.jit
 def add_kernel(
     x_ptr, y_ptr, output_ptr,
     n_elements,
@@ -98,7 +98,7 @@ def vector_add_triton(x, y):
     BLOCK_SIZE = 1024
     
     # Calculate grid dimensions
-    grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
+    grid = (triton_metal.cdiv(n_elements, BLOCK_SIZE),)
     
     # Launch kernel
     add_kernel[grid](x, y, output, n_elements, BLOCK_SIZE=BLOCK_SIZE)
@@ -211,7 +211,7 @@ def benchmark_vector_add():
 if __name__ == "__main__":
     print(f"Apple {hardware_capabilities.chip_generation.name} detected")
     print(f"MLX version: {mx.__version__}")
-    print(f"Triton version: {triton.__version__}")
+    print(f"Triton version: {triton_metal.__version__}")
     
     # Test vector addition
     test_vector_add(size=1_000_000)

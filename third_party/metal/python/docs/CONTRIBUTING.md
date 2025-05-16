@@ -17,7 +17,7 @@ Thank you for your interest in contributing to the Triton Metal backend! This do
 
 The Triton Metal backend is designed to enable Triton kernels to run on Apple Silicon GPUs via the Metal API. Before contributing, we recommend:
 
-1. Familiarizing yourself with the [Triton programming model](https://triton-lang.org/main/programming-guide/index.html)
+1. Familiarizing yourself with the [Triton programming model](https://chenxingqiang.github.io/triton-metalmain/programming-guide/index.html)
 2. Understanding the [Metal backend architecture](ARCHITECTURE.md)
 3. Reviewing our [optimization guides](PERFORMANCE_OPTIMIZATION.md) and [M3-specific optimizations](M3_OPTIMIZATIONS.md)
 
@@ -35,7 +35,7 @@ The Triton Metal backend is designed to enable Triton kernels to run on Apple Si
 
 1. Clone the Triton repository:
    ```bash
-   git clone https://github.com/openai/triton.git
+   git clone https://github.com/chenxingqiang/triton-metal.git
    cd triton
    ```
 
@@ -60,7 +60,7 @@ The Triton Metal backend is designed to enable Triton kernels to run on Apple Si
 
 ### 1. Finding Issues to Work On
 
-- Check the [Issues](https://github.com/openai/triton/issues) tab for issues labeled with `backend:metal`, `good first issue`, or `help wanted`
+- Check the [Issues](https://github.com/chenxingqiang/triton-metal/issues) tab for issues labeled with `backend:metal`, `good first issue`, or `help wanted`
 - Feel free to ask for clarification on any issue before starting work
 
 ### 2. Creating a New Issue

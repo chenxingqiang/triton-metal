@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-测试MLX桥接层中基本算术和数学运算的映射功能
+Test the mapping functionality of basic arithmetic and mathematical operations in the MLX bridge layer
 """
 
 import unittest
@@ -8,24 +8,24 @@ import os
 import sys
 import numpy as np
 
-# 添加必要的路径
+# Add necessary paths
 current_dir = os.path.dirname(os.path.abspath(__file__))
 base_dir = os.path.dirname(os.path.dirname(os.path.dirname(current_dir)))
 sys.path.insert(0, base_dir)
 sys.path.insert(0, os.path.dirname(os.path.dirname(current_dir)))
 
-# 导入MLX
+# Import MLX
 try:
     import mlx.core as mx
 except ImportError:
-    print("错误: 未安装MLX库，请先安装: pip install mlx")
+    print("Error: MLX library not installed. Please install with: pip install mlx")
     sys.exit(1)
 
-# 导入我们的模块
-from third_party.metal.python.mlx_bridge import init_dtype_map, init_op_map
-from third_party.metal.python.memory_layout import MemoryLayout, adapt_tensor
+# Import our modules
+from mlx.mlx_bridge import init_dtype_map, init_op_map
+from mlx.memory_layout import MemoryLayout, adapt_tensor
 
-# 模拟Triton操作
+# Mock Triton operations
 class MockOp:
     def __init__(self, name, results=None, operands=None, attributes=None):
         self.name = name
@@ -33,9 +33,9 @@ class MockOp:
         self.operands = operands or []
         self.attributes = attributes or {}
 
-# 定义简单版本的操作映射用于测试
+# Define a simple version of operation mapping for testing
 TEST_OP_MAP = {
-    # 二元操作
+    # Binary operations
     'tt.add': mx.add,
     'tt.sub': mx.subtract,
     'tt.mul': mx.multiply,
@@ -54,7 +54,7 @@ TEST_OP_MAP = {
     'tt.gt': mx.greater,
     'tt.ge': mx.greater_equal,
     
-    # 一元操作
+    # Unary operations
     'tt.exp': mx.exp,
     'tt.log': mx.log,
     'tt.sin': mx.sin,
@@ -65,17 +65,17 @@ TEST_OP_MAP = {
     'tt.abs': mx.abs,
     'tt.tanh': mx.tanh,
     
-    # 复杂操作
+    # Complex operations
     'tt.dot': mx.matmul,
     'tt.reshape': mx.reshape,
     'tt.trans': mx.transpose,
     
-    # 规约操作
+    # Reduction operations
     'tt.reduce': lambda op, operands, _: handle_reduction_test(op, operands),
 }
 
 def handle_reduction_test(op, operands):
-    """测试专用的规约处理函数"""
+    """Reduction handling function for testing purposes"""
     input_tensor = operands[0]
     axis = op.attributes.get("axis")
     reduce_type = op.attributes.get("reduce_type")
@@ -89,160 +89,160 @@ def handle_reduction_test(op, operands):
     elif reduce_type == "mean":
         return mx.mean(input_tensor, axis=axis)
     else:
-        raise NotImplementedError(f"规约类型 {reduce_type} 尚未实现")
+        raise NotImplementedError(f"Reduction type {reduce_type} not implemented")
 
 class TestBasicOps(unittest.TestCase):
-    """测试基本操作映射"""
+    """Test basic operation mapping"""
     
     def setUp(self):
-        """测试前初始化"""
-        # 创建一些基本测试数据
+        """Initialize before testing"""
+        # Create some basic test data
         self.x = mx.array([1, 2, 3, 4], dtype=mx.float32)
         self.y = mx.array([5, 6, 7, 8], dtype=mx.float32)
         self.a = mx.array([[1, 2], [3, 4]], dtype=mx.float32)
         self.b = mx.array([[5, 6], [7, 8]], dtype=mx.float32)
         
     def test_binary_arithmetic(self):
-        """测试基本二元算术运算"""
-        # 测试加法
+        """Test basic binary arithmetic operations"""
+        # Test addition
         result = TEST_OP_MAP["tt.add"](self.x, self.y)
         expected = self.x + self.y
         self.assertTrue(mx.array_equal(result, expected))
         
-        # 测试减法
+        # Test subtraction
         result = TEST_OP_MAP["tt.sub"](self.x, self.y)
         expected = self.x - self.y
         self.assertTrue(mx.array_equal(result, expected))
         
-        # 测试乘法
+        # Test multiplication
         result = TEST_OP_MAP["tt.mul"](self.x, self.y)
         expected = self.x * self.y
         self.assertTrue(mx.array_equal(result, expected))
         
-        # 测试除法
+        # Test division
         result = TEST_OP_MAP["tt.div"](self.x, self.y)
         expected = self.x / self.y
         self.assertTrue(mx.array_equal(result, expected))
         
     def test_unary_operations(self):
-        """测试一元运算"""
-        # 测试指数
+        """Test unary operations"""
+        # Test exponential
         result = TEST_OP_MAP["tt.exp"](self.x)
         expected = mx.exp(self.x)
         self.assertTrue(mx.allclose(result, expected))
         
-        # 测试对数
+        # Test logarithm
         pos_x = mx.array([1, 2, 3, 4], dtype=mx.float32)
         result = TEST_OP_MAP["tt.log"](pos_x)
         expected = mx.log(pos_x)
         self.assertTrue(mx.allclose(result, expected))
         
-        # 测试平方根
+        # Test square root
         result = TEST_OP_MAP["tt.sqrt"](self.x)
         expected = mx.sqrt(self.x)
         self.assertTrue(mx.allclose(result, expected))
         
-        # 测试负数
+        # Test negation
         result = TEST_OP_MAP["tt.neg"](self.x)
         expected = -self.x
         self.assertTrue(mx.array_equal(result, expected))
         
     def test_logical_operations(self):
-        """测试逻辑运算"""
+        """Test logical operations"""
         x_bool = self.x > 2
         y_bool = self.y > 6
         
-        # 测试逻辑与
+        # Test logical AND
         result = TEST_OP_MAP["tt.and"](x_bool, y_bool)
         expected = mx.logical_and(x_bool, y_bool)
         self.assertTrue(mx.array_equal(result, expected))
         
-        # 测试逻辑或
+        # Test logical OR
         result = TEST_OP_MAP["tt.or"](x_bool, y_bool)
         expected = mx.logical_or(x_bool, y_bool)
         self.assertTrue(mx.array_equal(result, expected))
         
-        # 测试逻辑非
+        # Test logical NOT
         result = TEST_OP_MAP["tt.not"](x_bool)
         expected = mx.logical_not(x_bool)
         self.assertTrue(mx.array_equal(result, expected))
         
     def test_comparison_operations(self):
-        """测试比较运算"""
-        # 测试等于
+        """Test comparison operations"""
+        # Test equals
         result = TEST_OP_MAP["tt.eq"](self.x, self.y)
         expected = self.x == self.y
         self.assertTrue(mx.array_equal(result, expected))
         
-        # 测试不等于
+        # Test not equals
         result = TEST_OP_MAP["tt.ne"](self.x, self.y)
         expected = self.x != self.y
         self.assertTrue(mx.array_equal(result, expected))
         
-        # 测试小于
+        # Test less than
         result = TEST_OP_MAP["tt.lt"](self.x, self.y)
         expected = self.x < self.y
         self.assertTrue(mx.array_equal(result, expected))
         
-        # 测试大于
+        # Test greater than
         result = TEST_OP_MAP["tt.gt"](self.x, self.y)
         expected = self.x > self.y
         self.assertTrue(mx.array_equal(result, expected))
         
     def test_matrix_operations(self):
-        """测试矩阵运算"""
-        # 测试矩阵乘法
+        """Test matrix operations"""
+        # Test matrix multiplication
         result = TEST_OP_MAP["tt.dot"](self.a, self.b)
         expected = mx.matmul(self.a, self.b)
         self.assertTrue(mx.allclose(result, expected))
         
-        # 测试转置
+        # Test transpose
         result = TEST_OP_MAP["tt.trans"](self.a)
         expected = mx.transpose(self.a)
         self.assertTrue(mx.array_equal(result, expected))
         
-        # 测试reshape
+        # Test reshape
         result = TEST_OP_MAP["tt.reshape"](self.x, (2, 2))
         expected = mx.reshape(self.x, (2, 2))
         self.assertTrue(mx.array_equal(result, expected))
         
     def test_reduction_operations(self):
-        """测试规约操作"""
-        # 创建模拟的规约操作
+        """Test reduction operations"""
+        # Create mock reduction operation
         sum_op = MockOp("tt.reduce", results=[None], operands=[self.a], 
                         attributes={"reduce_type": "sum", "axis": 0})
         
-        # 测试和规约
+        # Test sum reduction
         result = TEST_OP_MAP["tt.reduce"](sum_op, [self.a], None)
         expected = mx.sum(self.a, axis=0)
         self.assertTrue(mx.array_equal(result, expected))
         
-        # 创建模拟的最大值规约操作
+        # Create mock max reduction operation
         max_op = MockOp("tt.reduce", results=[None], operands=[self.a], 
                        attributes={"reduce_type": "max", "axis": 1})
         
-        # 测试最大值规约
+        # Test max reduction
         result = TEST_OP_MAP["tt.reduce"](max_op, [self.a], None)
         expected = mx.max(self.a, axis=1)
         self.assertTrue(mx.array_equal(result, expected))
         
     def test_memory_layout(self):
-        """测试内存布局适配"""
-        # 创建行优先布局
+        """Test memory layout adaptation"""
+        # Create row-major layout
         row_layout = MemoryLayout(self.a.shape)
         
-        # 创建列优先布局
+        # Create column-major layout
         col_layout = MemoryLayout(self.a.shape, "col_major")
         
-        # 测试行优先到列优先的转换
+        # Test conversion from row-major to column-major
         row_to_col = adapt_tensor(self.a, row_layout, col_layout)
         self.assertEqual(row_to_col.shape, self.a.shape)
         
-        # 验证转换后等价于转置
+        # Verify conversion is equivalent to transpose
         expected = mx.transpose(self.a)
         self.assertTrue(mx.allclose(row_to_col, expected))
         
-        # 测试列优先到行优先的转换
+        # Test conversion from column-major to row-major
         col_to_row = adapt_tensor(expected, col_layout, row_layout)
         self.assertEqual(col_to_row.shape, self.a.shape)
         self.assertTrue(mx.allclose(col_to_row, self.a))

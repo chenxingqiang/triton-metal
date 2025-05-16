@@ -7,10 +7,13 @@ import unittest
 import numpy as np
 import scipy.special
 import math
+import os
+import sys
 from typing import Callable, Dict, List, Tuple
 
+
 # Import the functions to test
-from special_ops import (
+from MLX.special_ops import (
     SpecialMathFunctions, 
     NumericalFunctions,
     get_special_ops_map

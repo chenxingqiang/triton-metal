@@ -31,7 +31,7 @@ Proton can be used to profile *functions* and *regions* in Python code.
 - The following examples demonstrate how to use Proton to profile a simple Python function.
 
 ```python
-import triton.profiler as proton
+import triton_metal.profiler as proton
 
 # name: The path to the profile data
 # context: The method used to annotate the context of each GPU kernel. Currently, "shadow" and "python" are supported.
@@ -58,7 +58,7 @@ proton.finalize()
 Unlike the *python* context that provide users with files, functions, and lines where the GPU kernels are invoked, the *shadow* context provides users with the annotated regions in the code. The following example demonstrates how to use the *shadow* context.
 
 ```python
-import triton.profiler as proton
+import triton_metal.profiler as proton
 
 
 session_id = proton.start(name="profile_name", context="shadow")
@@ -88,7 +88,7 @@ with proton.scope("test2", {"bytes": 3000}):
 ### Hook
 
 ```python
-import triton.profiler as proton
+import triton_metal.profiler as proton
 from typing import NamedTuple
 
 # hook: When hook="triton", it enables proton to invoke launch_metadata function before launching the GPU kernel
@@ -101,7 +101,7 @@ def metadata_fn(
 ):
     return {"name": "<kernel_name>", "flops8": 1.0}
 
-@triton.jit(launch_metadata=metadata_fn)
+@triton_metal.jit(launch_metadata=metadata_fn)
 def foo(x, y):
     tl.store(y, tl.load(x))
 ```
@@ -127,7 +127,7 @@ The following examples demonstrate how to use Proton command-line.
 ```bash
 proton [options] script.py [script_args] [script_options]
 proton [options] pytest [pytest_args] [script_options]
-python -m triton.profiler.proton [options] script.py [script_args] [script_options]
+python -m triton_metal.profiler.proton [options] script.py [script_args] [script_options]
 proton --instrument=[instrumentation pass] script.py
 ```
 
@@ -174,7 +174,7 @@ For example, the `enter_op` method in `OpInterface` can be invoked by the main t
 The following example demonstrates how to use `cpu_timed_scope`:
 
 ```python
-import triton.profiler as proton
+import triton_metal.profiler as proton
 
 with proton.cpu_timed_scope("test"):
     foo[1,](x, y)
@@ -263,7 +263,7 @@ Additionally, the proton-viewer options `-i <regex> -d <depth> -t <threshold>` c
 The following example demonstrates how to use instruction sampling:
 
 ```python
-import triton.profiler as proton
+import triton_metal.profiler as proton
 
 proton.start(name="profile_name", context="shadow", backend="cupti_pcsampling")
 ```

@@ -1,7 +1,7 @@
-triton.language
+triton_metal.language
 ===============
 
-.. currentmodule:: triton.language
+.. currentmodule:: triton_metal.language
 
 
 Programming Model

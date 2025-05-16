@@ -6,10 +6,10 @@ This kernel demonstrates different types of reduction operations
 that would benefit from the COALESCED memory layout in the Metal backend.
 """
 
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 
-@triton.jit
+@triton_metal.jit
 def reduction_sample_kernel(
     # Pointers to input and output arrays
     x_ptr, y_ptr, z_ptr, output_ptr,
@@ -188,7 +188,7 @@ def invoke_reduction_kernel(x, y, z, axis=0):
     
     # Determine grid and block sizes
     BLOCK_M, BLOCK_N = 32, 32
-    grid = (triton.cdiv(M, BLOCK_M), triton.cdiv(N, BLOCK_N))
+    grid = (triton_metal.cdiv(M, BLOCK_M), triton_metal.cdiv(N, BLOCK_N))
     
     # Launch the kernel
     reduction_sample_kernel[grid](

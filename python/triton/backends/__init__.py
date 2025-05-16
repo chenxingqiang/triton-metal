@@ -36,7 +36,7 @@ class Backend:
 
 def _discover_backends() -> dict[str, Backend]:
     backends = dict()
-    for ep in entry_points().select(group="triton.backends"):
+    for ep in entry_points().select(group="triton_metal.backends"):
         compiler = importlib.import_module(f"{ep.value}.compiler")
         driver = importlib.import_module(f"{ep.value}.driver")
         backends[ep.name] = Backend(_find_concrete_subclasses(compiler, BaseBackend),  # type: ignore

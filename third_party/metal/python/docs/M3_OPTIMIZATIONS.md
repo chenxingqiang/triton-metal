@@ -369,7 +369,7 @@ To check if M3 optimizations are being applied:
 import os
 os.environ["TRITON_BACKEND"] = "metal"
 
-import triton
+import triton_metal
 from metal_hardware_optimizer import hardware_capabilities, AppleSiliconGeneration
 
 # Check if running on M3 hardware
@@ -387,7 +387,7 @@ import os
 os.environ["TRITON_BACKEND"] = "metal"
 os.environ["TRITON_METAL_FORCE_M3"] = "1"  # Force M3 optimizations
 
-import triton
+import triton_metal
 ```
 
 ## Advanced Configuration
@@ -443,4 +443,4 @@ python m3_benchmark.py --all
 
 1. Apple M3 GPU Architecture: [https://developer.apple.com/metal/](https://developer.apple.com/metal/)
 2. MLX Framework: [https://github.com/ml-explore/mlx](https://github.com/ml-explore/mlx)
-3. Triton Compiler: [https://github.com/openai/triton](https://github.com/openai/triton) 
+3. Triton Compiler: [https://github.com/chenxingqiang/triton-metal](https://github.com/chenxingqiang/triton-metal) 

@@ -5,11 +5,11 @@ import subprocess
 import sysconfig
 import tempfile
 from pathlib import Path
-from triton.runtime.build import _build
+from triton_metal.runtime.build import _build
 from triton import knobs
-from triton.runtime.cache import get_cache_manager
-from triton.backends.compiler import GPUTarget
-from triton.backends.driver import GPUDriver, platform_key
+from triton_metal.runtime.cache import get_cache_manager
+from triton_metal.backends.compiler import GPUTarget
+from triton_metal.backends.driver import GPUDriver, platform_key
 
 dirname = os.path.dirname(os.path.realpath(__file__))
 include_dir = [os.path.join(dirname, "include")]
@@ -542,7 +542,7 @@ class HIPDriver(GPUDriver):
         return torch.device("cuda", self.get_current_device())
 
     def get_benchmarker(self):
-        from triton.testing import do_bench
+        from triton_metal.testing import do_bench
         return do_bench
 
     def get_empty_cache_for_benchmark(self):

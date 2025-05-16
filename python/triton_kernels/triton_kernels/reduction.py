@@ -1,11 +1,11 @@
 import torch
-import triton
+import triton_metal
 from .reduction_details.reduce_bitmatrix import sum_bitmatrix_rows
 from . import Bitmatrix
 
 
 def sum(x, partials_block_size=None, dim=0):
-    cdiv = triton.cdiv
+    cdiv = triton_metal.cdiv
     assert isinstance(x, Bitmatrix)
     assert dim == 0
     assert partials_block_size is not None

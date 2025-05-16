@@ -4,35 +4,35 @@ import uuid
 import torch
 from torch.testing import assert_close
 
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 
 
 def get_current_target_warp_size():
-    return triton.runtime.driver.active.get_current_target().warp_size
+    return triton_metal.runtime.driver.active.get_current_target().warp_size
 
 
-@triton.jit
+@triton_metal.jit
 def kernel_device_print(X, Y, BLOCK: tl.constexpr):
     x = tl.load(X + tl.arange(0, BLOCK))
     tl.device_print("x: ", x)
     tl.store(Y + tl.arange(0, BLOCK), x)
 
 
-@triton.jit
+@triton_metal.jit
 def kernel_device_print_cast(BLOCK: tl.constexpr):
     x = tl.arange(0, BLOCK) + 128
     tl.device_print("x: ", x.to(tl.uint8))
 
 
-@triton.jit
+@triton_metal.jit
 def kernel_device_print_hex(X, Y, BLOCK: tl.constexpr):
     x = tl.load(X + tl.arange(0, BLOCK))
     tl.device_print("x: ", x, hex=True)
     tl.store(Y + tl.arange(0, BLOCK), x)
 
 
-@triton.jit
+@triton_metal.jit
 def kernel_print(X, Y, BLOCK: tl.constexpr):
     x = tl.load(X + tl.arange(0, BLOCK))
     # Triton should add a space after this prefix.
@@ -40,14 +40,14 @@ def kernel_print(X, Y, BLOCK: tl.constexpr):
     tl.store(Y + tl.arange(0, BLOCK), x)
 
 
-@triton.jit
+@triton_metal.jit
 def kernel_device_print_scalar(SCALAR):
     x = tl.load(SCALAR)
     # Triton should add a space after this prefix.
     print("x:", x)
 
 
-@triton.jit
+@triton_metal.jit
 def kernel_device_print_large(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
@@ -57,14 +57,14 @@ def kernel_device_print_large(
     tl.device_print("x ", x)
 
 
-@triton.jit
+@triton_metal.jit
 def kernel_print_multiple_args(X, Y, BLOCK: tl.constexpr):
     x = tl.load(X + tl.arange(0, BLOCK))
     y = tl.full((BLOCK, ), 1, tl.int32)
     print("", x, y)
 
 
-@triton.jit
+@triton_metal.jit
 def kernel_device_print_multiple_args(X, Y, BLOCK: tl.constexpr):
     x = tl.load(X + tl.arange(0, BLOCK))
     y = tl.full((BLOCK, ), 1, tl.int32)
@@ -72,7 +72,7 @@ def kernel_device_print_multiple_args(X, Y, BLOCK: tl.constexpr):
     tl.store(Y + tl.arange(0, BLOCK), y)
 
 
-@triton.jit
+@triton_metal.jit
 def kernel_static_print(X, Y, BLOCK: tl.constexpr, PLACEHOLDER: tl.constexpr):
     # This function takes an extra value as a tl.constexpr so this kernel is not
     # cached.  This way the static print is run every time.
@@ -81,22 +81,22 @@ def kernel_static_print(X, Y, BLOCK: tl.constexpr, PLACEHOLDER: tl.constexpr):
     tl.store(Y + tl.arange(0, BLOCK), x)
 
 
-@triton.jit
+@triton_metal.jit
 def kernel_no_arg_print():
     print("", tl.program_id(0))
 
 
-@triton.jit
+@triton_metal.jit
 def kernel_print_no_arg():
     print("no arg")
 
 
-@triton.jit
+@triton_metal.jit
 def kernel_print_pointer(X, Y, BLOCK: tl.constexpr):
     tl.device_print("ptr ", X + tl.arange(0, BLOCK))
 
 
-@triton.jit
+@triton_metal.jit
 def kernel_print_2d_tensor(X, Y, BLOCK_SIZE_X: tl.constexpr, BLOCK_SIZE_Y: tl.constexpr):
     off_x = tl.arange(0, BLOCK_SIZE_X)
     off_y = tl.arange(0, BLOCK_SIZE_Y)

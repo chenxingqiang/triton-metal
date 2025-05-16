@@ -14,7 +14,7 @@ from unittest.mock import patch, MagicMock
 from typing import Dict, Any, List
 import threading
 
-from metal_auto_tuner import (
+from MLX.metal_auto_tuner import (
     ParamType,
     TunableParam,
     SearchStrategy,
@@ -29,13 +29,13 @@ from metal_auto_tuner import (
 
 # Try to import optional dependencies
 try:
-    from metal_auto_tuner import BayesianOptimizationStrategy
+    from MLX.metal_auto_tuner import BayesianOptimizationStrategy
     HAS_SKOPT = True
 except ImportError:
     HAS_SKOPT = False
 
 try:
-    from metal_hardware_optimizer import hardware_capabilities, AppleSiliconGeneration
+    from MLX.metal_hardware_optimizer import hardware_capabilities, AppleSiliconGeneration
     HAS_HARDWARE_OPTIMIZER = True
 except ImportError:
     HAS_HARDWARE_OPTIMIZER = False

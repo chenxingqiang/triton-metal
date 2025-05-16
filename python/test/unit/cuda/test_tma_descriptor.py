@@ -1,11 +1,11 @@
 from contextlib import nullcontext
 import pytest
 import torch
-import triton
-from triton.tools.tensor_descriptor import TensorDescriptor
+import triton_metal
+from triton_metal.tools.tensor_descriptor import TensorDescriptor
 
 
-@triton.jit
+@triton_metal.jit
 def dummy_kernel(desc):
     pass
 

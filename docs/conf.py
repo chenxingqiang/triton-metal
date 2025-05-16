@@ -108,8 +108,8 @@ def setup(app):
         old = func
 
         def wrapped(obj, **kwargs):
-            import triton
-            if isinstance(obj, triton.runtime.JITFunction):
+            import triton_metal
+            if isinstance(obj, triton_metal.runtime.JITFunction):
                 obj = obj.fn
             return old(obj)
 
@@ -118,8 +118,8 @@ def setup(app):
     old_documenter = sphinx.ext.autosummary.get_documenter
 
     def documenter(app, obj, parent):
-        import triton
-        if isinstance(obj, triton.runtime.JITFunction):
+        import triton_metal
+        if isinstance(obj, triton_metal.runtime.JITFunction):
             obj = obj.fn
         return old_documenter(app, obj, parent)
 

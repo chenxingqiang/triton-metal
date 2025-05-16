@@ -1,20 +1,20 @@
 import os
 import pytest
 import shutil
-import triton
-from triton._internal_testing import is_hip
+import triton_metal
+from triton_metal._internal_testing import is_hip
 
 from pathlib import Path
 
 
 def test_knobs_utils(fresh_knobs) -> None:
-    triton.knobs.propagate_env = False
+    triton_metal.knobs.propagate_env = False
 
-    class test_knobs(triton.knobs.base_knobs):
-        foo: triton.knobs.env_str = triton.knobs.env_str("FOO", "triton")
-        bar: triton.knobs.env_bool = triton.knobs.env_bool("BAR", True)
-        baz: triton.knobs.env_opt_str = triton.knobs.env_opt_str("BAZ")
-        quux: triton.knobs.env_opt_bool = triton.knobs.env_opt_bool("QUUX")
+    class test_knobs(triton_metal.knobs.base_knobs):
+        foo: triton_metal.knobs.env_str = triton_metal.knobs.env_str("FOO", "triton")
+        bar: triton_metal.knobs.env_bool = triton_metal.knobs.env_bool("BAR", True)
+        baz: triton_metal.knobs.env_opt_str = triton_metal.knobs.env_opt_str("BAZ")
+        quux: triton_metal.knobs.env_opt_bool = triton_metal.knobs.env_opt_bool("QUUX")
 
     instance = test_knobs()
 
@@ -138,7 +138,7 @@ def test_read_env(truthy, falsey, fresh_knobs, monkeypatch):
     monkeypatch.setenv("USE_IR_LOC", "ttir")
     monkeypatch.setenv("TRITON_CACHE_DIR", "/tmp/triton_cache")
     monkeypatch.setenv("TRITON_HOME", "/tmp/triton_home")
-    monkeypatch.setenv("TRITON_CACHE_MANAGER", "triton.runtime.cache:FileCacheManager")
+    monkeypatch.setenv("TRITON_CACHE_MANAGER", "triton_metal.runtime.cache:FileCacheManager")
     monkeypatch.setenv("TRITON_CUDACRT_PATH", "/tmp/cuda/crt")
     monkeypatch.setenv("TRITON_CUDART_PATH", "/tmp/cuda/rt")
 
@@ -150,7 +150,7 @@ def test_read_env(truthy, falsey, fresh_knobs, monkeypatch):
     assert fresh_knobs.cache.dump_dir == "/tmp/triton_home/.triton/dump"
     assert fresh_knobs.cache.override_dir == "/tmp/triton_home/.triton/override"
 
-    from triton.runtime.cache import FileCacheManager
+    from triton_metal.runtime.cache import FileCacheManager
 
     assert fresh_knobs.cache.manager_class == FileCacheManager
 
@@ -185,7 +185,7 @@ def test_set_knob_directly(fresh_knobs, monkeypatch):
     assert fresh_knobs.cache.dir == "/tmp/triton_cache"
 
     # Disable propagation to verify resetting/del behavior
-    triton.knobs.propagate_env = False
+    triton_metal.knobs.propagate_env = False
 
     fresh_knobs.cache.dir = fresh_knobs.env
     assert fresh_knobs.cache.dir == "/tmp/other_triton_cache"
@@ -194,7 +194,7 @@ def test_set_knob_directly(fresh_knobs, monkeypatch):
     fresh_knobs.cache.reset()
     assert fresh_knobs.cache.dir == "/tmp/other_triton_cache"
 
-    triton.knobs.propagate_env = True
+    triton_metal.knobs.propagate_env = True
 
     # Just in case, lets check all the other datatypes too
     fresh_knobs.language.default_fp_fusion = False
@@ -202,7 +202,7 @@ def test_set_knob_directly(fresh_knobs, monkeypatch):
     fresh_knobs.amd.global_prefetch = 5
     fresh_knobs.nvidia.mock_ptx_version = "42.0.1"
 
-    from triton.runtime.cache import FileCacheManager
+    from triton_metal.runtime.cache import FileCacheManager
 
     class TestManagerClass(FileCacheManager):
         pass
@@ -214,7 +214,7 @@ def test_set_knob_directly(fresh_knobs, monkeypatch):
     monkeypatch.setenv("TRITON_HIP_USE_BLOCK_PINGPONG", "0")
     monkeypatch.setenv("TRITON_HIP_GLOBAL_PREFETCH", "2")
     monkeypatch.setenv("TRITON_MOCK_PTX_VERSION", "1.0.0")
-    monkeypatch.setenv("TRITON_CACHE_MANAGER", "triton.runtime.cache:FileCacheManager")
+    monkeypatch.setenv("TRITON_CACHE_MANAGER", "triton_metal.runtime.cache:FileCacheManager")
 
     assert not fresh_knobs.language.default_fp_fusion
     assert fresh_knobs.amd.use_block_pingpong

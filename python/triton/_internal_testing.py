@@ -2,14 +2,14 @@ import os
 import re
 import numpy as np
 import torch
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 from triton import knobs
 import pytest
 
 from numpy.random import RandomState
 from typing import Optional, Union
-from triton.runtime.jit import TensorWrapper, reinterpret, type_canonicalisation_dict
+from triton_metal.runtime.jit import TensorWrapper, reinterpret, type_canonicalisation_dict
 
 int_dtypes = ['int8', 'int16', 'int32', 'int64']
 uint_dtypes = ['uint8', 'uint16', 'uint32', 'uint64']
@@ -30,7 +30,7 @@ def is_interpreter():
 def get_current_target():
     if is_interpreter():
         return None
-    return triton.runtime.driver.active.get_current_target()
+    return triton_metal.runtime.driver.active.get_current_target()
 
 
 def is_cuda():
@@ -130,7 +130,7 @@ def str_to_triton_dtype(x: str) -> tl.dtype:
 
 
 def torch_dtype_name(dtype) -> str:
-    if isinstance(dtype, triton.language.dtype):
+    if isinstance(dtype, triton_metal.language.dtype):
         return dtype.name
     elif isinstance(dtype, torch.dtype):
         # 'torch.int64' -> 'int64'
@@ -173,7 +173,7 @@ def tma_skip_msg(byval_only=False):
 requires_tma = pytest.mark.skipif(not supports_tma(), reason=tma_skip_msg())
 
 
-def unwrap_tensor(t: Union[torch.Tensor, triton.runtime.jit.TensorWrapper]) -> torch.Tensor:
-    if isinstance(t, triton.runtime.jit.TensorWrapper):
+def unwrap_tensor(t: Union[torch.Tensor, triton_metal.runtime.jit.TensorWrapper]) -> torch.Tensor:
+    if isinstance(t, triton_metal.runtime.jit.TensorWrapper):
         return t.base
     return t

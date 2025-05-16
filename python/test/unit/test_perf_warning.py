@@ -3,9 +3,9 @@ from contextlib import contextmanager
 
 import pytest
 import torch
-import triton
-import triton.language as tl
-from triton._internal_testing import is_cuda
+import triton_metal
+import triton_metal.language as tl
+from triton_metal._internal_testing import is_cuda
 
 
 @contextmanager
@@ -23,7 +23,7 @@ def test_mma_remark(capfd, fresh_triton_cache):
         if capability[0] != 9:
             pytest.skip("Requires sm = 90 to run")
 
-    @triton.jit
+    @triton_metal.jit
     def matmul_kernel(
         a_ptr,
         b_ptr,
@@ -82,7 +82,7 @@ def test_mma_remark(capfd, fresh_triton_cache):
         "stride_cn": "i32",
     }
     with enable_diagnostics_context('remarks'):
-        triton.compile(triton.compiler.ASTSource(
+        triton_metal.compile(triton_metal.compiler.ASTSource(
             fn=matmul_kernel,
             signature=signature,
             constexprs={},
@@ -94,7 +94,7 @@ def test_mma_remark(capfd, fresh_triton_cache):
     assert "note: see current operation:" not in captured.err
 
     with enable_diagnostics_context('remarks,operations,stacktraces'):
-        triton.compile(triton.compiler.ASTSource(
+        triton_metal.compile(triton_metal.compiler.ASTSource(
             fn=matmul_kernel,
             signature=signature,
             constexprs={},
@@ -106,7 +106,7 @@ def test_mma_remark(capfd, fresh_triton_cache):
 
 def test_remark_vectorization(capfd, fresh_triton_cache):
 
-    @triton.jit
+    @triton_metal.jit
     def ldst_vec(in_ptr0, in_ptr1, in_ptr2, in_ptr3, out_ptr0, XBLOCK: tl.constexpr):
         xoffset = tl.program_id(0) * XBLOCK
         xindex = xoffset + tl.arange(0, XBLOCK)[:]
@@ -145,8 +145,8 @@ def test_remark_vectorization(capfd, fresh_triton_cache):
     }
 
     with enable_diagnostics_context('remarks'):
-        triton.compile(
-            triton.compiler.ASTSource(**astsource_args),
+        triton_metal.compile(
+            triton_metal.compiler.ASTSource(**astsource_args),
             options={"num_warps": 1},
         )
 
@@ -155,8 +155,8 @@ def test_remark_vectorization(capfd, fresh_triton_cache):
     assert "note: see current operation:" not in err
 
     with enable_diagnostics_context('remarks,operations,stacktraces'):
-        triton.compile(
-            triton.compiler.ASTSource(**astsource_args),
+        triton_metal.compile(
+            triton_metal.compiler.ASTSource(**astsource_args),
             options={"num_warps": 1},
         )
 
@@ -167,7 +167,7 @@ def test_remark_vectorization(capfd, fresh_triton_cache):
 
 def test_remark_swp_op_before_operands(capfd, fresh_triton_cache):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel_pipe_error(in_ptr, out_ptr):
         SIZE: tl.constexpr = 64
         in_ptrs = in_ptr + tl.arange(0, SIZE)

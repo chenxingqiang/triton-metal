@@ -1,16 +1,16 @@
 import math
 import pytest
 import torch
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 from test_mxfp import MXFP4Tensor, MXScaleTensor
 import re
-from triton._internal_testing import is_cuda, is_hip, is_hip_cdna3, is_hip_cdna4, is_hip_cdna
+from triton_metal._internal_testing import is_cuda, is_hip, is_hip_cdna3, is_hip_cdna4, is_hip_cdna
 
 
 def f8_to_f16(x, dtype):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(Y, X, N, BLOCK_SIZE: tl.constexpr):
         pid = tl.program_id(0)
         offs = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
@@ -19,13 +19,13 @@ def f8_to_f16(x, dtype):
         tl.store(Y + offs, x, mask=mask)
 
     ret = torch.empty(x.shape, dtype=torch.float16, device=x.device)
-    grid = lambda META: (triton.cdiv(x.numel(), META['BLOCK_SIZE']), )
+    grid = lambda META: (triton_metal.cdiv(x.numel(), META['BLOCK_SIZE']), )
     dtype = getattr(tl, dtype)
-    kernel[grid](ret, triton.reinterpret(x, dtype), ret.numel(), BLOCK_SIZE=1024)
+    kernel[grid](ret, triton_metal.reinterpret(x, dtype), ret.numel(), BLOCK_SIZE=1024)
     return ret
 
 
-@triton.jit
+@triton_metal.jit
 def matmul_kernel(  #
         a_ptr, b_ptr, output_ptr,  #
         M, N, K,  #
@@ -131,7 +131,7 @@ def test_simple_matmul(dtype_src_str, dtype_dst_str, BLOCK_M, BLOCK_N, BLOCK_K, 
         B = b
     dtype_dst = getattr(torch, dtype_dst_str)
     output = torch.empty((M, N), dtype=dtype_dst, device=device)
-    grid = (triton.cdiv(M, BLOCK_M) * triton.cdiv(N, BLOCK_N), 1)
+    grid = (triton_metal.cdiv(M, BLOCK_M) * triton_metal.cdiv(N, BLOCK_N), 1)
     k = matmul_kernel[grid](a, b, output, M, N, K, a.stride(0), a.stride(1), b.stride(0), b.stride(1), output.stride(0),
                             output.stride(1), BLOCK_M, BLOCK_N, BLOCK_K, NUM_STAGES=NUM_STAGES, PRECISION=precision,
                             num_warps=NUM_WARPS, num_ctas=NUM_CTAS, EPILOGUE_SUBTILE=EPILOGUE_SUBTILE)
@@ -160,7 +160,7 @@ def test_simple_matmul(dtype_src_str, dtype_dst_str, BLOCK_M, BLOCK_N, BLOCK_K, 
 
 
 # persistent matmul with fused loops
-@triton.jit
+@triton_metal.jit
 def simple_persistent_kernel(a_ptr, b_ptr, c_ptr, M, N, K, stride_am, stride_ak,  #
                              stride_bk, stride_bn,  #
                              stride_cm, stride_cn, BLOCK_SIZE_M: tl.constexpr, BLOCK_SIZE_N: tl.constexpr,
@@ -250,7 +250,7 @@ def test_simple_persistent_matmul(BLOCK_M, BLOCK_N, BLOCK_K, NUM_WARPS, DISALLOW
     # Fake small number of SMS to test that persistent kernel works reliably
     NUM_SMS = 8
 
-    grid = (min(NUM_SMS, triton.cdiv(M, BLOCK_M) * triton.cdiv(N, BLOCK_N)), )
+    grid = (min(NUM_SMS, triton_metal.cdiv(M, BLOCK_M) * triton_metal.cdiv(N, BLOCK_N)), )
     k = simple_persistent_kernel[grid](
         a, b, output,  #
         M, N, K,  #
@@ -274,7 +274,7 @@ def test_simple_persistent_matmul(BLOCK_M, BLOCK_N, BLOCK_K, NUM_WARPS, DISALLOW
         assert ttgir.count(pattern) > 0, "Expect peeled mmav5 operations."
 
 
-@triton.jit
+@triton_metal.jit
 def mxfp_matmul(  #
         a_ptr, b_ptr, output_ptr,  #
         a_scale, b_scale,  #
@@ -357,7 +357,7 @@ def test_mxfp(M, N, K, BLOCK_M, BLOCK_N, BLOCK_K, NUM_STAGES, nonKDim, NUM_WARPS
 
     dtype_dst = getattr(torch, dtype_dst_str)
     output = torch.empty((M, N), dtype=dtype_dst, device=device)
-    grid = (triton.cdiv(M, BLOCK_M) * triton.cdiv(N, BLOCK_N), 1)
+    grid = (triton_metal.cdiv(M, BLOCK_M) * triton_metal.cdiv(N, BLOCK_N), 1)
     kernel_kwargs = {}
     if is_hip():
         kernel_kwargs["matrix_instr_nonkdim"] = nonKDim
@@ -392,7 +392,7 @@ def _knob_promote_lhs_to_tmem(monkeypatch):
     monkeypatch.setenv("ALLOW_LHS_TMEM_LAYOUT_CONVERSION", "1")
 
 
-@triton.jit
+@triton_metal.jit
 def block_scale_mxfp_matmul(  #
         a_ptr, b_ptr, output_ptr,  #
         a_scale, b_scale,  #
@@ -488,7 +488,7 @@ def test_blocked_scale_mxfp(M, N, K, BLOCK_M, BLOCK_N, BLOCK_K, NUM_STAGES, USE_
 
     dtype_dst = getattr(torch, dtype_dst_str)
     output = torch.empty((M, N), dtype=dtype_dst, device=device)
-    grid = (triton.cdiv(M, BLOCK_M) * triton.cdiv(N, BLOCK_N), 1)
+    grid = (triton_metal.cdiv(M, BLOCK_M) * triton_metal.cdiv(N, BLOCK_N), 1)
     out = block_scale_mxfp_matmul[grid](a, b, output, a_scale, b_scale, M, N, K, a_scale.stride(0), a_scale.stride(1),
                                         a_scale.stride(2), a_scale.stride(3), a.stride(0), a.stride(1), b.stride(0),
                                         b.stride(1), output.stride(0), output.stride(1), BLOCK_M, BLOCK_N, BLOCK_K,
@@ -563,7 +563,7 @@ def test_lhs_in_tmem(BLOCK_M, BLOCK_N, BLOCK_K, a_trans, dtype_src_str, device, 
         A = a
         B = b
     output = torch.empty((M, N), dtype=torch.float32, device=device)
-    grid = (triton.cdiv(M, BLOCK_M) * triton.cdiv(N, BLOCK_N), 1)
+    grid = (triton_metal.cdiv(M, BLOCK_M) * triton_metal.cdiv(N, BLOCK_N), 1)
     k = matmul_kernel[grid](a, b, output, M, N, K, a.stride(0), a.stride(1), b.stride(0), b.stride(1), output.stride(0),
                             output.stride(1), BLOCK_M, BLOCK_N, BLOCK_K, NUM_STAGES=1, SCALE_A=None, PRECISION="tf32",
                             A_TRANS=a_trans)
@@ -576,7 +576,7 @@ def test_lhs_in_tmem(BLOCK_M, BLOCK_N, BLOCK_K, a_trans, dtype_src_str, device, 
     assert re.search(pattern, ttgir)
 
 
-@triton.jit
+@triton_metal.jit
 def lhs_in_tmem_kernel_mxfp(  #
         a_ptr, b_ptr, output_ptr,  #
         a_scale, b_scale,  #
@@ -635,7 +635,7 @@ def test_lhs_in_tmem_mxfp(device, monkeypatch):
     torch.testing.assert_close(ref_out, output, atol=atol, rtol=rtol)
 
 
-@triton.jit
+@triton_metal.jit
 def block_scale_fp4_matmul(  #
         a_ptr, b_ptr, output_ptr,  #
         a_scale, b_scale,  #
@@ -765,7 +765,7 @@ def test_block_scale_fp4(M, N, K, BLOCK_M, BLOCK_N, BLOCK_K, VEC_SIZE, with_a_sc
     ref_out = torch.matmul(a_mxfp4.to(torch.float32) * a_scale_ref, b_ref * b_scale_ref)
 
     output = a.new_empty((M, N), dtype=torch.float32)
-    grid = (triton.cdiv(M, BLOCK_M) * triton.cdiv(N, BLOCK_N), 1)
+    grid = (triton_metal.cdiv(M, BLOCK_M) * triton_metal.cdiv(N, BLOCK_N), 1)
     kernel_kwargs = {}
     if is_hip():
         kernel_kwargs["matrix_instr_nonkdim"] = nonKDim
@@ -782,7 +782,7 @@ def test_block_scale_fp4(M, N, K, BLOCK_M, BLOCK_N, BLOCK_K, VEC_SIZE, with_a_sc
             assert "kind::mxf8f6f4" in ptx
 
 
-@triton.jit
+@triton_metal.jit
 def mxfp8_mxfp4_matmul(  #
         a_ptr, b_ptr, output_ptr,  #
         a_scale, b_scale,  #
@@ -949,7 +949,7 @@ def test_mxfp8_mxfp4_matmul(M, N, K, BLOCK_M, BLOCK_N, BLOCK_K, NUM_STAGES, B_TR
     ref_out = torch.matmul(a_ref * a_scale_ref, b_ref * b_scale_ref)
 
     output = a.new_empty((M, N), dtype=torch.float32)
-    grid = (triton.cdiv(M, BLOCK_M) * triton.cdiv(N, BLOCK_N), 1)
+    grid = (triton_metal.cdiv(M, BLOCK_M) * triton_metal.cdiv(N, BLOCK_N), 1)
     kernel_kwargs = {}
     if is_hip():
         kernel_kwargs["matrix_instr_nonkdim"] = nonKDim

@@ -208,7 +208,7 @@ cat reduction_files.txt | xargs ./simple_analyzer.py
 If you have a reduction operation in your code:
 
 ```python
-@triton.jit
+@triton_metal.jit
 def my_reduction(input_ptr, output_ptr, n, m, ...):
     # Your reduction code here
     ...

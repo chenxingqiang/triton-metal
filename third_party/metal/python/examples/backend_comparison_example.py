@@ -5,8 +5,8 @@
 # like CUDA, focusing on performance differences between M3 and other hardware.
 
 import torch
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 import time
 import argparse
 import matplotlib.pyplot as plt
@@ -42,7 +42,7 @@ except:
 print(f"System: {platform.system()} {platform.release()}")
 print(f"Python: {platform.python_version()}")
 print(f"PyTorch: {torch.__version__}")
-print(f"Triton: {triton.__version__}")
+print(f"Triton: {triton_metal.__version__}")
 
 # Available backends for testing
 available_backends = []
@@ -51,7 +51,7 @@ if has_cuda: available_backends.append("cuda")
 available_backends.append("cpu")
 
 # Define a simple matrix multiplication kernel for all backends
-@triton.jit
+@triton_metal.jit
 def matmul_kernel(
     a_ptr, b_ptr, c_ptr,
     M, N, K,
@@ -112,7 +112,7 @@ def matmul_kernel(
 
 
 # Define an element-wise operation kernel for all backends
-@triton.jit
+@triton_metal.jit
 def elementwise_kernel(
     x_ptr, y_ptr, output_ptr, n_elements,
     BLOCK_SIZE: tl.constexpr
@@ -133,7 +133,7 @@ def elementwise_kernel(
 
 
 # Define a reduction kernel for all backends
-@triton.jit
+@triton_metal.jit
 def reduction_kernel(
     x_ptr, output_ptr, n_elements,
     BLOCK_SIZE: tl.constexpr
@@ -164,17 +164,17 @@ def benchmark_matmul(M, N, K, device, dtype, num_repeats=100):
     
     # Define grid and block sizes
     grid = lambda meta: (
-        triton.cdiv(M, meta['BLOCK_SIZE_M']) * triton.cdiv(N, meta['BLOCK_SIZE_N']),
+        triton_metal.cdiv(M, meta['BLOCK_SIZE_M']) * triton_metal.cdiv(N, meta['BLOCK_SIZE_N']),
     )
     
     # Auto-tuning configs
     configs = [
-        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}),
-        triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 64, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}),
-        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 64, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}),
+        triton_metal.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}),
+        triton_metal.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 64, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}),
+        triton_metal.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 64, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}),
         # Additional M3-optimized configs (will be preferred on M3 hardware)
-        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 64, 'GROUP_SIZE_M': 8}),
-        triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 64, 'GROUP_SIZE_M': 8}),
+        triton_metal.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 64, 'GROUP_SIZE_M': 8}),
+        triton_metal.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 64, 'GROUP_SIZE_M': 8}),
     ]
     
     # Warmup
@@ -217,16 +217,16 @@ def benchmark_elementwise(n_elements, device, dtype, num_repeats=100):
     output = torch.empty(n_elements, device=device, dtype=dtype)
     
     # Define grid
-    grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']), )
+    grid = lambda meta: (triton_metal.cdiv(n_elements, meta['BLOCK_SIZE']), )
     
     # Auto-tuning configs
     configs = [
-        triton.Config({'BLOCK_SIZE': 1024}),
-        triton.Config({'BLOCK_SIZE': 512}),
-        triton.Config({'BLOCK_SIZE': 256}),
+        triton_metal.Config({'BLOCK_SIZE': 1024}),
+        triton_metal.Config({'BLOCK_SIZE': 512}),
+        triton_metal.Config({'BLOCK_SIZE': 256}),
         # Additional sizes for M3
-        triton.Config({'BLOCK_SIZE': 2048}),
-        triton.Config({'BLOCK_SIZE': 4096}),
+        triton_metal.Config({'BLOCK_SIZE': 2048}),
+        triton_metal.Config({'BLOCK_SIZE': 4096}),
     ]
     
     # Warmup
@@ -258,16 +258,16 @@ def benchmark_reduction(n_elements, device, dtype, num_repeats=100):
     output = torch.empty(1, device=device, dtype=dtype)
     
     # Define grid
-    grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']), )
+    grid = lambda meta: (triton_metal.cdiv(n_elements, meta['BLOCK_SIZE']), )
     
     # Auto-tuning configs
     configs = [
-        triton.Config({'BLOCK_SIZE': 1024}),
-        triton.Config({'BLOCK_SIZE': 512}),
-        triton.Config({'BLOCK_SIZE': 256}),
+        triton_metal.Config({'BLOCK_SIZE': 1024}),
+        triton_metal.Config({'BLOCK_SIZE': 512}),
+        triton_metal.Config({'BLOCK_SIZE': 256}),
         # Additional sizes for M3
-        triton.Config({'BLOCK_SIZE': 2048}),
-        triton.Config({'BLOCK_SIZE': 4096}),
+        triton_metal.Config({'BLOCK_SIZE': 2048}),
+        triton_metal.Config({'BLOCK_SIZE': 4096}),
     ]
     
     # Warmup

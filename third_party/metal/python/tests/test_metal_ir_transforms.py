@@ -16,9 +16,9 @@ if current_dir not in sys.path:
     sys.path.insert(0, current_dir)
 
 # Import modules to test
-import metal_ir_transforms
-from metal_ir_transforms import TransformPass, TransformationContext, MPSPatternMatcher
-from metal_ir_transforms import MPSTransformer, MetalIRTransformer
+import MLX.metal_ir_transforms
+from MLX.metal_ir_transforms import TransformPass, TransformationContext, MPSPatternMatcher
+from MLX.metal_ir_transforms import MPSTransformer, MetalIRTransformer
 
 class TestIRTransforms(unittest.TestCase):
     """Test case for IR transformations"""

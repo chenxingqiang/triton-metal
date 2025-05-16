@@ -8,10 +8,7 @@ import sys
 import platform
 import unittest
 
-# 添加必要的路径
-current_dir = os.path.dirname(os.path.abspath(__file__))
-base_dir = os.path.dirname(os.path.dirname(os.path.dirname(current_dir)))
-sys.path.insert(0, base_dir)
+
 
 # 修复Metal后端路径
 metal_backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -33,12 +30,12 @@ class MockGPUTarget:
 # 创建mock模块
 import types
 sys.modules['triton'] = types.ModuleType('triton')
-sys.modules['triton.backends'] = types.ModuleType('triton.backends')
-sys.modules['triton.backends.compiler'] = types.ModuleType('triton.backends.compiler')
-sys.modules['triton.backends.driver'] = types.ModuleType('triton.backends.driver')
-sys.modules['triton.backends.compiler'].BaseBackend = MockBaseBackend
-sys.modules['triton.backends.compiler'].GPUTarget = MockGPUTarget
-sys.modules['triton.backends.driver'].DriverBase = MockDriverBase
+sys.modules['triton_metal.backends'] = types.ModuleType('triton_metal.backends')
+sys.modules['triton_metal.backends.compiler'] = types.ModuleType('triton_metal.backends.compiler')
+sys.modules['triton_metal.backends.driver'] = types.ModuleType('triton_metal.backends.driver')
+sys.modules['triton_metal.backends.compiler'].BaseBackend = MockBaseBackend
+sys.modules['triton_metal.backends.compiler'].GPUTarget = MockGPUTarget
+sys.modules['triton_metal.backends.driver'].DriverBase = MockDriverBase
 
 class TestMetalDetection(unittest.TestCase):
     """测试Metal后端的检测功能"""

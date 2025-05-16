@@ -6,19 +6,38 @@ Triton releases provide a stable snapshot of the code base encapsulated into a b
 
 Following is the Release Compatibility Matrix for Triton releases:
 
-| Triton version | Python version | Manylinux version |
-| --- | --- | --- |
-| 3.2.0 | >=3.9, <=3.13 | glibc 2.17+ x86-64 |
-| 3.1.0 | >=3.8, <=3.12 | glibc 2.17+ x86-64 |
-| 3.0.0 | >=3.8, <=3.12 | glibc 2.17+ x86-64 |
-| 2.3.1 | >=3.7, <=3.12 | glibc 2.17+ x86-64 |
-| 2.3.0 | >=3.7, <=3.12 | glibc 2.17+ x86-64 |
-| 2.2.0 | >=3.7, <=3.12 | glibc 2.17+ x86-64 |
-| 2.1.0 | >=3.7, <=3.11 | glibc 2.17+ x86-64 |
-| 2.0.0 | >=3.6, <=3.11 | glibc 2.17+ x86-64 |
-| 1.1.1 | >=3.6, <=3.9 | glibc 2.17+ x86-64 |
-| 1.1.0 | >=3.6, <=3.9 | glibc 2.17+ x86-64 |
-| 1.0.0 | >=3.6, <=3.9 | glibc 2.17+ x86-64 |
+| Triton version | Python version | Platforms | Hardware Support |
+| --- | --- | --- | --- |
+| 3.3.0+metal | >=3.9, <=3.13 | macOS 13.5+, Linux | Apple Silicon (M1/M2/M3), NVIDIA GPUs (CC 8.0+), AMD GPUs (ROCm 6.2+) |
+| 3.2.0 | >=3.9, <=3.13 | Linux | NVIDIA GPUs (CC 8.0+), AMD GPUs (ROCm 6.2+) |
+| 3.1.0 | >=3.8, <=3.12 | Linux | NVIDIA GPUs (CC 8.0+), AMD GPUs (ROCm 6.2+) |
+| 3.0.0 | >=3.8, <=3.12 | Linux | NVIDIA GPUs (CC 8.0+), AMD GPUs (ROCm 6.2+) |
+| 2.3.1 | >=3.7, <=3.12 | Linux | NVIDIA GPUs (CC 8.0+), AMD GPUs (ROCm 6.2+) |
+| 2.3.0 | >=3.7, <=3.12 | Linux | NVIDIA GPUs (CC 8.0+), AMD GPUs (ROCm 6.2+) |
+| 2.2.0 | >=3.7, <=3.12 | Linux | NVIDIA GPUs (CC 8.0+), AMD GPUs (ROCm 6.2+) |
+| 2.1.0 | >=3.7, <=3.11 | Linux | NVIDIA GPUs (CC 8.0+), AMD GPUs (ROCm 6.2+) |
+| 2.0.0 | >=3.6, <=3.11 | Linux | NVIDIA GPUs (CC 8.0+), AMD GPUs (ROCm 6.2+) |
+| 1.1.1 | >=3.6, <=3.9 | Linux | NVIDIA GPUs (CC 8.0+) |
+| 1.1.0 | >=3.6, <=3.9 | Linux | NVIDIA GPUs (CC 8.0+) |
+| 1.0.0 | >=3.6, <=3.9 | Linux | NVIDIA GPUs (CC 8.0+) |
+
+## Metal Backend Release
+
+The 3.3.0+metal release introduces full support for Apple Silicon GPUs through the Metal backend. This is the first release with optimized performance for M1, M2, and M3 chips, featuring specialized optimizations for the M3's enhanced hardware capabilities.
+
+### Metal Backend Requirements
+- macOS 13.5 or higher
+- Apple Silicon Mac (M1/M2/M3)
+- MLX 0.3.0 or higher
+
+### Metal Backend Features
+- Full MLX integration for efficient Metal execution
+- M3-specific optimizations leveraging 64KB shared memory (vs 32KB on M1/M2)
+- 8-wide vectorization for M3 chips
+- Tensor core utilization for matrix operations
+- Enhanced SIMD operations (32-wide vs 16-wide on M1/M2)
+- Dynamic register caching
+- Automatic hardware detection and optimization
 
 ## Release Cadence
 
@@ -45,4 +64,4 @@ After branch cut, we approach finalizing the release branch with clear criteria 
 * Documentation improvements
 * Release branch specific changes (e.g. change version identifiers or CI fixes)
 
-Please note: **No feature work allowed for cherry picks**. All PRs that are considered for cherry-picks need to be merged on trunk, the only exception are Release branch specific changes. An issue is for tracking cherry-picks to the release branch is created after the branch cut. **Only issues that have ‘cherry-picks’ in the issue tracker will be considered for the release.**
+Please note: **No feature work allowed for cherry picks**. All PRs that are considered for cherry-picks need to be merged on trunk, the only exception are Release branch specific changes. An issue is for tracking cherry-picks to the release branch is created after the branch cut. **Only issues that have 'cherry-picks' in the issue tracker will be considered for the release.**

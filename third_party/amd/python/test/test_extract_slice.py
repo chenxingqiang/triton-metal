@@ -1,16 +1,16 @@
 import pytest
 import torch
 
-import triton
+import triton_metal
 
-from triton._internal_testing import is_hip
+from triton_metal._internal_testing import is_hip
 
 num_ctas_list = [1]
 
 GPU_DIALECT = "ttg"
 
 if is_hip():
-    THREADS_PER_WARP = triton.runtime.driver.active.get_current_target().warp_size
+    THREADS_PER_WARP = triton_metal.runtime.driver.active.get_current_target().warp_size
 else:
     THREADS_PER_WARP = 32
 
@@ -102,7 +102,7 @@ def test_extract_slice(dtype, M, N, M_tile_size, N_tile_size, M_tile_offset, N_t
     with tempfile.NamedTemporaryFile(mode='w', suffix='.ttgir') as f:
         f.write(ir)
         f.flush()
-        kernel = triton.compile(f.name)
+        kernel = triton_metal.compile(f.name)
 
     extract_slice = torch.empty((M_tile_size, N_tile_size), device=device, dtype=torch.float16)
 

@@ -1,8 +1,8 @@
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 
 
-@triton.jit
+@triton_metal.jit
 def _routing_compute_expt_offs(ExpertHist, FinalExpertOffs, hist_size,  # histogram
                                BLOCK_N: tl.constexpr):
     loop_iterations = (hist_size + BLOCK_N - 1) // BLOCK_N
@@ -17,7 +17,7 @@ def _routing_compute_expt_offs(ExpertHist, FinalExpertOffs, hist_size,  # histog
         offs_n += BLOCK_N
 
 
-@triton.jit
+@triton_metal.jit
 def _routing_compute_indx_offs(TokensStart, PartialHist, PartialOffs, shape_pm, stride_pm, BLOCK_M: tl.constexpr):
     expt_id = tl.program_id(0)
     offs_m = tl.arange(0, BLOCK_M)
@@ -36,7 +36,7 @@ def _routing_compute_indx_offs(TokensStart, PartialHist, PartialOffs, shape_pm, 
         offs_m += BLOCK_M
 
 
-@triton.jit
+@triton_metal.jit
 def _keyed_add(x, y):
 
     # we keep the key in the upper 16 bits of a uint32:
@@ -48,7 +48,7 @@ def _keyed_add(x, y):
     return z
 
 
-@triton.jit
+@triton_metal.jit
 def _routing_compute_indx(GatherIndx, ScatterIndx, GateScal, ExptScal, ExptIndx, PartialOffs, stride_pm, n_gates,
                           BLOCK_M: tl.constexpr, N_EXPTS_ACT: tl.constexpr):
 
@@ -81,7 +81,7 @@ def _routing_compute_indx(GatherIndx, ScatterIndx, GateScal, ExptScal, ExptIndx,
     tl.store(GateScal + gates, gate_scal, mask=mask)
 
 
-@triton.jit
+@triton_metal.jit
 def _routing_clear_bitmatrix(Bitmatrix, stride_bm, shape_bn, cutoff, BLOCK_N: tl.constexpr):
     pid_m = tl.program_id(0)
     cutoff_word = cutoff // 32
@@ -95,7 +95,7 @@ def _routing_clear_bitmatrix(Bitmatrix, stride_bm, shape_bn, cutoff, BLOCK_N: tl
         tl.store(Bitmatrix + pid_m * stride_bm + offs_n, values, mask=offs_n < shape_bn)
 
 
-@triton.jit
+@triton_metal.jit
 def _routing_memset_indx(Indx, size, sentinel, BLOCK: tl.constexpr, ExpertHist, FinalExpertOffs, hist_size,
                          BLOCK_N: tl.constexpr):
     pid = tl.program_id(0)

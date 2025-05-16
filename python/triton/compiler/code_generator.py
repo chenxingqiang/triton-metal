@@ -365,13 +365,13 @@ class CodeGenerator(ast.NodeVisitor):
                     type(val) is ModuleType,  #
                     isinstance(val, JITFunction),  #
                     getattr(val, "__triton_builtin__", False),  #
-                    getattr(val, "__module__", "").startswith("triton.language"),  #
+                    getattr(val, "__module__", "").startswith("triton_metal.language"),  #
                     isinstance(val, language.dtype),  #
                     _is_namedtuple(val),
                     self._is_constexpr_global(name),  #
                     # Allow accesses to globals while visiting an ast.arg
                     # because you should be able to do
-                    #   @triton.jit def fn(x: tl.constexpr = GLOBAL): ...
+                    #   @triton_metal.jit def fn(x: tl.constexpr = GLOBAL): ...
                     self.visiting_arg_default_value,  #
                     knobs.compilation.allow_non_constexpr_globals,
             ]):
@@ -380,8 +380,8 @@ class CodeGenerator(ast.NodeVisitor):
                 textwrap.dedent(f"""\
                 Cannot access global variable {name} from within @jit'ed
                 function. Triton kernels can only access global variables that
-                are instanstiated as constexpr (`x = triton.language.constexpr(42)`). Note that this is different from
-                annotating a variable as constexpr (`x: triton.language.constexpr = 42`), which is not supported.  Alternatively, set the
+                are instanstiated as constexpr (`x = triton_metal.language.constexpr(42)`). Note that this is different from
+                annotating a variable as constexpr (`x: triton_metal.language.constexpr = 42`), which is not supported.  Alternatively, set the
                 envvar TRITON_ALLOW_NON_CONSTEXPR_GLOBALS=1, but we do not
                 promise to support this forever.""").replace("\n", " "))
 

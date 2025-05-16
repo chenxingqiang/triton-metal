@@ -4,7 +4,7 @@ import os
 import pathlib
 from .profile import start, finalize, _select_backend
 from .flags import set_command_line
-import triton
+import triton_metal
 
 
 def parse_arguments():
@@ -12,7 +12,7 @@ def parse_arguments():
         description="The proton command utility for profiling scripts and pytest tests.", usage="""
     proton [options] script.py [script_args] [script_options]
     proton [options] pytest [pytest_args] [script_options]
-    python -m triton.profiler.proton [options] script.py [script_args] [script_options]
+    python -m triton_metal.profiler.proton [options] script.py [script_args] [script_options]
 """, formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument("-n", "--name", type=str, help="Name of the profiling session")
     parser.add_argument("-b", "--backend", type=str, help="Profiling backend", default=None,
@@ -46,7 +46,7 @@ def execute_as_main(script, args, instrumentation_pass=None):
     sys.argv = [script] + args
     # Append the script's directory in case the script uses relative imports
     sys.path.append(os.path.dirname(script_path))
-    top_level_triton_path = os.path.dirname(triton.__file__)
+    top_level_triton_path = os.path.dirname(triton_metal.__file__)
 
     if instrumentation_pass == "print-mem-spaces":
         instrumentation_pass_path = str(

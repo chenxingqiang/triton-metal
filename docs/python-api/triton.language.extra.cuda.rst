@@ -1,7 +1,7 @@
-triton.language.extra.cuda
+triton_metal.language.extra.cuda
 ==========================
 
-.. currentmodule:: triton.language.extra.cuda
+.. currentmodule:: triton_metal.language.extra.cuda
 
 Programmatic Dependent Launch
 -----------------------------

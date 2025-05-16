@@ -106,8 +106,8 @@ class Autotuner(KernelInterface):
                 )
                 return
 
-            import triton.testing
-            self._do_bench = lambda kernel_call, quantiles: triton.testing.do_bench(
+            import triton_metal.testing
+            self._do_bench = lambda kernel_call, quantiles: triton_metal.testing.do_bench(
                 kernel_call,
                 warmup=warmup if warmup is not None else 25,
                 rep=rep if rep is not None else 100,
@@ -169,10 +169,10 @@ class Autotuner(KernelInterface):
             bench_fn()
             return
 
-        from triton._C.libtriton import get_cache_invalidating_env_vars
-        from triton.compiler.compiler import make_backend, triton_key
-        from triton.runtime.cache import get_cache_manager
-        from triton.runtime.jit import JITFunction
+        from triton_metal._C.libtriton import get_cache_invalidating_env_vars
+        from triton_metal.compiler.compiler import make_backend, triton_key
+        from triton_metal.runtime.cache import get_cache_manager
+        from triton_metal.runtime.jit import JITFunction
 
         fn = self.fn
         while not isinstance(fn, JITFunction):
@@ -371,19 +371,19 @@ class Config:
 def autotune(configs, key, prune_configs_by=None, reset_to_zero=None, restore_value=None, pre_hook=None, post_hook=None,
              warmup=None, rep=None, use_cuda_graph=False, do_bench=None, cache_results=False):
     """
-    Decorator for auto-tuning a :code:`triton.jit`'d function.
+    Decorator for auto-tuning a :code:`triton_metal.jit`'d function.
 
     .. highlight:: python
     .. code-block:: python
 
-        @triton.autotune(configs=[
-            triton.Config(kwargs={'BLOCK_SIZE': 128}, num_warps=4),
-            triton.Config(kwargs={'BLOCK_SIZE': 1024}, num_warps=8),
+        @triton_metal.autotune(configs=[
+            triton_metal.Config(kwargs={'BLOCK_SIZE': 128}, num_warps=4),
+            triton_metal.Config(kwargs={'BLOCK_SIZE': 1024}, num_warps=8),
           ],
           key=['x_size'] # the two above configs will be evaluated anytime
                          # the value of x_size changes
         )
-        @triton.jit
+        @triton_metal.jit
         def kernel(x_ptr, x_size, BLOCK_SIZE: tl.constexpr):
             ...
     :note: When all the configurations are evaluated, the kernel will run multiple times.
@@ -395,8 +395,8 @@ def autotune(configs, key, prune_configs_by=None, reset_to_zero=None, restore_va
     :code:`"1"`, Triton will print a message to stdout after autotuning each
     kernel, including the time spent autotuning and the best configuration.
 
-    :param configs: a list of :code:`triton.Config` objects
-    :type configs: list[triton.Config]
+    :param configs: a list of :code:`triton_metal.Config` objects
+    :type configs: list[triton_metal.Config]
     :param key: a list of argument names whose change in value will trigger the evaluation of all provided configs.
     :type key: list[str]
     :param prune_configs_by: a dict of functions that are used to prune configs, fields:
@@ -457,8 +457,8 @@ def heuristics(values):
     .. code-block:: python
 
         # smallest power-of-two >= x_size
-        @triton.heuristics(values={'BLOCK_SIZE': lambda args: triton.next_power_of_2(args['x_size'])})
-        @triton.jit
+        @triton_metal.heuristics(values={'BLOCK_SIZE': lambda args: triton_metal.next_power_of_2(args['x_size'])})
+        @triton_metal.jit
         def kernel(x_ptr, x_size, BLOCK_SIZE: tl.constexpr):
             ...
     :param values: a dictionary of meta-parameter names and functions that compute the value of the meta-parameter.

@@ -1,14 +1,14 @@
 import torch
 import pytest
 import pathlib
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 
-from triton._internal_testing import is_hip
-from triton.tools.tensor_descriptor import TensorDescriptor
+from triton_metal._internal_testing import is_hip
+from triton_metal.tools.tensor_descriptor import TensorDescriptor
 
 if torch.cuda.is_available() and torch.cuda.get_device_capability()[0] == 10:
-    from triton._C.libtriton import nvidia
+    from triton_metal._C.libtriton import nvidia
     cublas_workspace = torch.empty(32 * 1024 * 1024, device="cuda", dtype=torch.uint8)
     cublas = nvidia.cublas.CublasLt(cublas_workspace)
 else:
@@ -42,7 +42,7 @@ def test_warp_specialize_basic_ir(tmp_path: pathlib.Path):
 
     temp_file = tmp_path / "test_warp_specialize_basic_ir.ttir"
     temp_file.write_text(ir)
-    kernel = triton.compile(str(temp_file))
+    kernel = triton_metal.compile(str(temp_file))
 
     input = torch.empty(2, dtype=torch.int32, device='cuda')
     kernel[(1, 1, 1)](input)
@@ -111,7 +111,7 @@ def test_warp_specialize_tmem_ir(tmp_path: pathlib.Path):
 
     temp_file = tmp_path / "test_warp_specialize_tmem_ir.ttgir"
     temp_file.write_text(ir)
-    kernel = triton.compile(str(temp_file))
+    kernel = triton_metal.compile(str(temp_file))
     input = torch.arange(128 * 64, dtype=torch.float32, device='cuda').reshape(128, 64)
     output = torch.empty_like(input)
     kernel[(1, 1, 1)](input, output)
@@ -171,7 +171,7 @@ def test_warpgroup_reduction(tmp_path: pathlib.Path):
 
     temp_file = tmp_path / "test_warpgroup_reduction.ttgir"
     temp_file.write_text(ir)
-    kernel = triton.compile(str(temp_file))
+    kernel = triton_metal.compile(str(temp_file))
 
     input = torch.arange(1024, dtype=torch.int32, device='cuda')
     output = torch.empty(4, dtype=torch.int32, device='cuda')
@@ -182,7 +182,7 @@ def test_warpgroup_reduction(tmp_path: pathlib.Path):
     assert output[3] == torch.arange(768, 1024).sum()
 
 
-@triton.jit
+@triton_metal.jit
 def _compute_pid(tile_id, num_pid_n, num_pid_m, GROUP_SIZE_M):
     num_pid_in_group = GROUP_SIZE_M * num_pid_n
     group_id = tile_id // num_pid_in_group
@@ -193,7 +193,7 @@ def _compute_pid(tile_id, num_pid_n, num_pid_m, GROUP_SIZE_M):
     return pid_m, pid_n
 
 
-@triton.jit
+@triton_metal.jit
 def matmul_tma_ws_kernel(  #
         a_ptr, b_ptr, c_ptr,  #
         a_stride0, a_stride1,  #
@@ -263,9 +263,9 @@ def test_warp_specialize_tma_matmul(M, N, K, BLOCK_SIZE_M, BLOCK_SIZE_N, BLOCK_S
     def alloc_fn(size, align, stream):
         return torch.empty(size, dtype=torch.int8, device="cuda")
 
-    triton.set_allocator(alloc_fn)
+    triton_metal.set_allocator(alloc_fn)
 
-    grid = lambda META: (triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]), )
+    grid = lambda META: (triton_metal.cdiv(M, META["BLOCK_SIZE_M"]) * triton_metal.cdiv(N, META["BLOCK_SIZE_N"]), )
     kernel = matmul_tma_ws_kernel[grid](A, B, C, *A.stride(), *B.stride(), *C.stride(), M, N, K, num_stages,
                                         BLOCK_SIZE_M, BLOCK_SIZE_N, BLOCK_SIZE_K, GROUP_SIZE_M, num_warps=num_warps,
                                         USE_FP8=use_fp8)
@@ -278,7 +278,7 @@ def test_warp_specialize_tma_matmul(M, N, K, BLOCK_SIZE_M, BLOCK_SIZE_N, BLOCK_S
     torch.testing.assert_close(ref_out.to(torch.float16), C.to(torch.float16), atol=0.03, rtol=0.03)
 
 
-@triton.jit
+@triton_metal.jit
 def matmul_tma_persistent_ws_kernel(  #
         a_ptr, b_ptr, c_ptr,  #
         a_stride0, a_stride1,  #
@@ -349,12 +349,12 @@ def test_warp_specialize_tma_matmul_persistent(M, N, K, BLOCK_SIZE_M, BLOCK_SIZE
     def alloc_fn(size, align, stream):
         return torch.empty(size, dtype=torch.int8, device="cuda")
 
-    triton.set_allocator(alloc_fn)
+    triton_metal.set_allocator(alloc_fn)
 
     def grid(META):
         return (min(
             NUM_SMS,
-            triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
+            triton_metal.cdiv(M, META["BLOCK_SIZE_M"]) * triton_metal.cdiv(N, META["BLOCK_SIZE_N"]),
         ), )
 
     kernel = matmul_tma_persistent_ws_kernel[grid](A, B, C, *A.stride(), *B.stride(), *C.stride(), M, N, K, num_stages,
@@ -369,7 +369,7 @@ def test_warp_specialize_tma_matmul_persistent(M, N, K, BLOCK_SIZE_M, BLOCK_SIZE
     torch.testing.assert_close(ref_out.to(torch.float16), C.to(torch.float16), atol=0.03, rtol=0.03)
 
 
-@triton.jit
+@triton_metal.jit
 def attention_inner_loop_kernel(  #
         desc_q, desc_k, desc_v,  #
         desc_acc, l_i_ptr, m_i_ptr,  #

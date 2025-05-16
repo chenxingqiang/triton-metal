@@ -1,7 +1,7 @@
-import triton
+import triton_metal
 import pytest
 import torch
-import triton.language as tl
+import triton_metal.language as tl
 
 from test_core import _test_binary, int_dtypes, uint_dtypes, float_dtypes, numpy_random
 
@@ -32,7 +32,7 @@ def test_maximum_minium(dtype, op, device):
 @pytest.mark.parametrize("dtype_str", ['int32', 'float16', 'float32', 'bfloat16'])
 def test_sort(M, N, k, descending, dtype_str, device):
 
-    @triton.jit
+    @triton_metal.jit
     def sort_kernel(X, stride_xm, Z, stride_zm, M: tl.constexpr, N: tl.constexpr, k: tl.constexpr,
                     descending: tl.constexpr):
         offs_m = tl.arange(0, M)
@@ -69,7 +69,7 @@ def test_sort(M, N, k, descending, dtype_str, device):
 @pytest.mark.parametrize("dtype_str", ['int32', 'float16', 'float32', 'bfloat16'])
 def test_flip(M, N, dtype_str, device):
 
-    @triton.jit
+    @triton_metal.jit
     def flip_kernel(X, Z, N: tl.constexpr, M: tl.constexpr):
         offx = tl.arange(0, M)
         offy = tl.arange(0, N) * M
@@ -90,7 +90,7 @@ def test_flip(M, N, dtype_str, device):
 def test_flip_inf(device):
     # Reproducer for https://github.com/triton-lang/triton/issues/5439
 
-    @triton.jit
+    @triton_metal.jit
     def triton_flip_kernel(out_ptr, x_ptr, N: tl.constexpr):
         pid = tl.program_id(0)
         x = tl.load(x_ptr + pid * N + tl.arange(0, N))
@@ -112,7 +112,7 @@ def test_flip_inf(device):
 @pytest.mark.interpreter
 def test_ravel(device):
 
-    @triton.jit
+    @triton_metal.jit
     def triton_ravel(out_ptr):
         a = tl.arange(0, 256)
         a = tl.reshape(a, (32, 8))
@@ -129,7 +129,7 @@ def test_ravel(device):
 @pytest.mark.parametrize("size_i, size_j, size_g", [[5, 7, 3]])
 def test_swizzle2d(size_i, size_j, size_g, device):
 
-    @triton.jit
+    @triton_metal.jit
     def swizzle2d_kernel(output, size_i, size_j, size_g):
         for i in tl.range(0, size_i, 1):
             for j in tl.range(0, size_j, 1):

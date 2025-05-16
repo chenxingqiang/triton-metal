@@ -5,15 +5,12 @@ This script contains comprehensive tests for the Metal backend, testing
 various operation types and sizes to verify correctness and performance.
 """
 
-import os
+
 import sys
 import time
 import argparse
 import numpy as np
 from typing import Dict, List, Tuple, Optional, Any
-
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 try:
     import mlx.core as mx
@@ -31,7 +28,7 @@ except ImportError:
 
 try:
     from metal_backend import MetalOptions
-    from triton_to_metal_converter import TritonToMLXConverter
+    from MLX.triton_to_metal_converter import TritonToMLXConverter
     HAS_BACKEND = True
 except ImportError:
     HAS_BACKEND = False

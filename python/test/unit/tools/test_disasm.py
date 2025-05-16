@@ -1,15 +1,15 @@
 import torch
 
-import triton
+import triton_metal
 import pytest
-import triton.language as tl
+import triton_metal.language as tl
 
 
 def test_disam_cubin():
-    if not triton.runtime.driver.active.get_current_target().backend == "cuda":
+    if not triton_metal.runtime.driver.active.get_current_target().backend == "cuda":
         pytest.skip("Test requires CUDA.")
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(X, i: tl.constexpr):
         tl.store(X, i)
 

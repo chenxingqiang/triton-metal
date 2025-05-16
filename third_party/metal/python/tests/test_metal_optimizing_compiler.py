@@ -15,7 +15,7 @@ if current_dir not in sys.path:
     sys.path.insert(0, current_dir)
 
 # Import the module to test
-from metal_optimizing_compiler import (
+from MLX.metal_optimizing_compiler import (
     MetalOptimizingCompiler,
     OptimizationLevel,
     get_metal_optimizing_compiler,

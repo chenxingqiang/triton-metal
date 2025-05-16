@@ -11,8 +11,8 @@ import argparse
 import os
 
 # Import Triton
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 
 # Check if Metal backend is available 
 use_metal = os.environ.get("TRITON_METAL", "1") == "1"
@@ -26,7 +26,7 @@ if use_metal:
         print("⚠️ Metal backend not available, falling back to CUDA")
 
 # Define the kernel using Triton language
-@triton.jit
+@triton_metal.jit
 def matmul_kernel(
     # Pointers to matrices
     a_ptr, b_ptr, c_ptr,
@@ -135,7 +135,7 @@ def matmul(a, b):
         (64, 256, 32, 4),
     ]:
         configs.append(
-            triton.Config({
+            triton_metal.Config({
                 'BLOCK_SIZE_M': block_m,
                 'BLOCK_SIZE_N': block_n,
                 'BLOCK_SIZE_K': block_k,
@@ -152,7 +152,7 @@ def matmul(a, b):
         (32, 32, 128, 16),  # Small tiles with large K for memory-bound cases
     ]:
         configs.append(
-            triton.Config({
+            triton_metal.Config({
                 'BLOCK_SIZE_M': block_m,
                 'BLOCK_SIZE_N': block_n,
                 'BLOCK_SIZE_K': block_k,
@@ -162,8 +162,8 @@ def matmul(a, b):
     
     # Create launch grid
     grid = lambda meta: (
-        triton.cdiv(M, meta['BLOCK_SIZE_M']) * 
-        triton.cdiv(N, meta['BLOCK_SIZE_N']) // meta['GROUP_SIZE_M'],
+        triton_metal.cdiv(M, meta['BLOCK_SIZE_M']) * 
+        triton_metal.cdiv(N, meta['BLOCK_SIZE_N']) // meta['GROUP_SIZE_M'],
     )
     
     # Launch the kernel with auto-tuning

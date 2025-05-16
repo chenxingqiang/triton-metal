@@ -2,7 +2,7 @@ import inspect
 import re
 import textwrap
 import types
-import triton
+import triton_metal
 
 
 def define_kernel(src, module, attrs=None, **extra_globals):
@@ -36,13 +36,13 @@ def define_kernel(src, module, attrs=None, **extra_globals):
 
     if attrs is None:
         attrs = dict()
-    f = triton.JITFunction(f, **attrs)
+    f = triton_metal.JITFunction(f, **attrs)
     f._unsafe_update_src(src)
     return f
 
 
 def specialize(fn, module, constants, tuples, name=None, do_not_specialize=tuple()):
-    assert isinstance(fn, triton.runtime.jit.JITFunction)
+    assert isinstance(fn, triton_metal.runtime.jit.JITFunction)
     if name is None:
         name = f"{fn.__name__}"
     # Get original source code
@@ -77,7 +77,7 @@ def specialize(fn, module, constants, tuples, name=None, do_not_specialize=tuple
         if arg_key not in constants:
             non_specialized_args += new_args
     # add global symbols
-    extra_globals = {v.__name__: v for k, v in constants.items() if isinstance(v, triton.runtime.jit.JITFunction)}
+    extra_globals = {v.__name__: v for k, v in constants.items() if isinstance(v, triton_metal.runtime.jit.JITFunction)}
     extra_globals.update(fn.__globals__)
     # build new source code and define kernel dynamically
     new_signature = f"def {name}({', '.join(non_specialized_args)}):"
@@ -87,9 +87,9 @@ def specialize(fn, module, constants, tuples, name=None, do_not_specialize=tuple
     tuple_lines = [
         f"    {key} = {'(' + ','.join(value) + (',' if len(value)>=1 else '') + ')'}" for key, value in tuples.items()
     ]
-    new_src = "\n".join(["@triton.jit", new_signature] + constexpr_lines + tuple_lines + body_lines)
+    new_src = "\n".join(["@triton_metal.jit", new_signature] + constexpr_lines + tuple_lines + body_lines)
     # find function parameters
-    sig = inspect.signature(triton.runtime.jit.JITFunction.__init__)
+    sig = inspect.signature(triton_metal.runtime.jit.JITFunction.__init__)
     params = list(sig.parameters.values())[2:]
     attrs = {param.name: getattr(fn, param.name, param.default) for param in params}
     if do_not_specialize:

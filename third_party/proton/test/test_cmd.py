@@ -1,4 +1,4 @@
-import triton
+import triton_metal
 import pytest
 import subprocess
 import json
@@ -11,7 +11,7 @@ def test_help():
 
 
 def is_hip():
-    return triton.runtime.driver.active.get_current_target().backend == "hip"
+    return triton_metal.runtime.driver.active.get_current_target().backend == "hip"
 
 
 @pytest.mark.parametrize("mode", ["script", "python", "pytest"])
@@ -23,7 +23,7 @@ def test_exec(mode, tmp_path: pathlib.Path):
     if mode == "script":
         subprocess.check_call(["proton", "-n", name, helper_file, "test"], stdout=subprocess.DEVNULL)
     elif mode == "python":
-        subprocess.check_call(["python3", "-m", "triton.profiler.proton", "-n", name, helper_file, "test"],
+        subprocess.check_call(["python3", "-m", "triton_metal.profiler.proton", "-n", name, helper_file, "test"],
                               stdout=subprocess.DEVNULL)
     elif mode == "pytest":
         subprocess.check_call(["proton", "-n", name, "pytest", "-k", "test_main", helper_file],

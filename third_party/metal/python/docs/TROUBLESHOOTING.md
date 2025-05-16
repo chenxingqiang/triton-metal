@@ -10,11 +10,11 @@ The Metal backend includes a built-in environment checker to verify your system 
 
 ```python
 # Run from Python
-import triton
-triton.backends.metal.check_environment()
+import triton_metal
+triton_metal.backends.metal.check_environment()
 
 # Or from command line
-python -m triton.backends.metal.check_environment
+python -m triton_metal.backends.metal.check_environment
 ```
 
 This will check:
@@ -43,8 +43,8 @@ Debug levels:
 Use the built-in profiler to identify performance bottlenecks:
 
 ```python
-import triton
-import triton.backends.metal as metal
+import triton_metal
+import triton_metal.backends.metal as metal
 
 # Start profiling
 metal.start_profiling()
@@ -99,7 +99,7 @@ print(report)
 
 ```python
 # Example of implementing a custom equivalent
-@triton.jit
+@triton_metal.jit
 def my_kernel(...):
     # Instead of unsupported_op
     # Use a combination of supported operations
@@ -149,7 +149,7 @@ x = tl.load(ptr + simple_offset, layout="COALESCED")
 **Solutions:**
 1. Reduce batch sizes or model dimensions
 2. Use smaller data types (e.g., float16 instead of float32)
-3. Release unused memory explicitly: `triton.backends.metal.clear_cache()`
+3. Release unused memory explicitly: `triton_metal.backends.metal.clear_cache()`
 4. Check system memory pressure with Activity Monitor
 
 #### Incorrect Results
@@ -161,7 +161,7 @@ x = tl.load(ptr + simple_offset, layout="COALESCED")
 **Solutions:**
 1. Check for numerical precision issues (especially with float16)
 2. Verify kernel logic and memory access patterns
-3. Add explicit synchronization: `triton.backends.metal.synchronize()`
+3. Add explicit synchronization: `triton_metal.backends.metal.synchronize()`
 4. Compare results with CPU implementation
 
 #### Slow Performance
@@ -171,19 +171,19 @@ x = tl.load(ptr + simple_offset, layout="COALESCED")
 - Operations take longer than CUDA equivalent
 
 **Solutions:**
-1. Enable autotuning: `@triton.jit(autotune=True)`
+1. Enable autotuning: `@triton_metal.jit(autotune=True)`
 2. Optimize threadgroup sizes for your chip
 3. Check memory access patterns
 4. Use chip-specific optimizations
 
 ```python
 # Example of autotuning configuration
-@triton.jit(
+@triton_metal.jit(
     autotune=True,
     configs=[
-        triton.Config({'BLOCK_SIZE': 128}),
-        triton.Config({'BLOCK_SIZE': 256}),
-        triton.Config({'BLOCK_SIZE': 512}),
+        triton_metal.Config({'BLOCK_SIZE': 128}),
+        triton_metal.Config({'BLOCK_SIZE': 256}),
+        triton_metal.Config({'BLOCK_SIZE': 512}),
     ]
 )
 def my_kernel(...):
@@ -232,14 +232,14 @@ def my_kernel(...):
 For shader debugging, you can extract and analyze the Metal shaders:
 
 ```python
-import triton
-import triton.backends.metal as metal
+import triton_metal
+import triton_metal.backends.metal as metal
 
 # Enable shader dump
 metal.set_debug_option("dump_shaders", True)
 
 # Run your kernel
-@triton.jit
+@triton_metal.jit
 def my_kernel(...):
     # Kernel code
     ...
@@ -255,7 +255,7 @@ You can then examine the shaders using Metal Developer Tools.
 Use the memory layout analyzer to understand memory access patterns:
 
 ```python
-import triton.backends.metal as metal
+import triton_metal.backends.metal as metal
 
 # Analyze memory accesses
 report = metal.analyze_memory_access(your_function, sample_inputs)
@@ -285,7 +285,7 @@ assert np.allclose(metal_result, cpu_result, rtol=1e-5, atol=1e-5)
 ### Check Hardware Capabilities
 
 ```python
-import triton.backends.metal as metal
+import triton_metal.backends.metal as metal
 
 # Get hardware capabilities
 capabilities = metal.get_hardware_capabilities()
@@ -305,7 +305,7 @@ else:
 Test raw memory bandwidth to diagnose performance issues:
 
 ```python
-import triton.backends.metal as metal
+import triton_metal.backends.metal as metal
 
 # Run memory bandwidth test
 bandwidth = metal.test_memory_bandwidth(size_mb=1024)
@@ -322,7 +322,7 @@ print(f"Memory bandwidth: {bandwidth:.2f} GB/s")
 Test raw compute throughput:
 
 ```python
-import triton.backends.metal as metal
+import triton_metal.backends.metal as metal
 
 # Run compute throughput test
 tflops = metal.test_compute_throughput(dtype="float32")
@@ -383,4 +383,4 @@ When submitting bug reports, include:
    - Error messages
    - Performance profiling results if relevant
 
-Submit issues to: [Triton GitHub Issues](https://github.com/openai/triton/issues) 
+Submit issues to: [Triton GitHub Issues](https://github.com/chenxingqiang/triton-metal/issues) 

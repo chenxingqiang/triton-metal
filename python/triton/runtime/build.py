@@ -20,7 +20,7 @@ def _build(name: str, src: str, srcdir: str, library_dirs: list[str], include_di
         cc = gcc if gcc is not None else clang
         if cc is None:
             raise RuntimeError(
-                "Failed to find C compiler. Please specify via CC environment variable or set triton.knobs.build.impl.")
+                "Failed to find C compiler. Please specify via CC environment variable or set triton_metal.knobs.build.impl.")
     # This function was renamed and made public in Python 3.10
     if hasattr(sysconfig, 'get_default_scheme'):
         scheme = sysconfig.get_default_scheme()

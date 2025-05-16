@@ -1,16 +1,16 @@
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 
 import torch
 import math
 
 
-@triton.jit
+@triton_metal.jit
 def add_helper(x, y):
     return x + y
 
 
-@triton.jit
+@triton_metal.jit
 def add_kernel(
     in_ptr0,
     in_ptr1,
@@ -59,22 +59,22 @@ def test_module_walk(device):
         torch.empty((32, 32), device=device),  # out_ptr
         16,  # BLOCK_SIZE
     ]
-    target = triton.runtime.driver.active.get_current_target()
-    backend = triton.compiler.compiler.make_backend(target)
-    src = triton.compiler.compiler.ASTSource(
+    target = triton_metal.runtime.driver.active.get_current_target()
+    backend = triton_metal.compiler.compiler.make_backend(target)
+    src = triton_metal.compiler.compiler.ASTSource(
         fn=kernel,
-        signature={kernel.arg_names[i]: triton.runtime.jit.mangle_type(arg)
+        signature={kernel.arg_names[i]: triton_metal.runtime.jit.mangle_type(arg)
                    for i, arg in enumerate(args)},
         constexprs={kernel.arg_names[i]: arg
                     for i, arg in enumerate(args)
                     if not isinstance(arg, torch.Tensor)},
     )
 
-    context = triton._C.libtriton.ir.context()
+    context = triton_metal._C.libtriton_metal.ir.context()
     options = backend.parse_options(dict())
     codegen_fns = dict()
     module_map = backend.get_module_map()
-    triton._C.libtriton.ir.load_dialects(context)
+    triton_metal._C.libtriton_metal.ir.load_dialects(context)
     backend.load_dialects(context)
 
     ttir_module = src.make_ir(options, codegen_fns, module_map, context)
@@ -83,7 +83,7 @@ def test_module_walk(device):
 
 def test_python_func_in_visit_call(device):
 
-    @triton.jit
+    @triton_metal.jit
     def test_py_call_const_kernel(
         in_ptr0,
         out_ptr,

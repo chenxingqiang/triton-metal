@@ -26,7 +26,7 @@ The Metal backend integration for Triton builds upon:
 
 1. Triton by OpenAI (MIT License)
    Copyright (c) 2019-present, OpenAI
-   https://github.com/openai/triton
+   https://github.com/chenxingqiang/triton-metal
 
 2. MLX by Apple (MIT License)
    Copyright (c) 2023 Apple Inc.

@@ -104,7 +104,7 @@ The COALESCED layout is automatically applied to reduction operations in the Met
 ### Example Kernel
 
 ```python
-@triton.jit
+@triton_metal.jit
 def sum_reduction_kernel(
     input_ptr, output_ptr, 
     M, N,

@@ -420,9 +420,9 @@ private:
     // should be greater than each of its child operation's ID .
     // Example:
     //     ...
-    //     %5 = triton.convert_layout %4
+    //     %5 = triton_metal.convert_layout %4
     //     %6 = scf.for ... iter_args(%arg0 = %0) -> (i32) {
-    //       %2 = triton.convert_layout %5
+    //       %2 = triton_metal.convert_layout %5
     //       ...
     //       scf.yield %arg0
     //     }

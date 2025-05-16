@@ -13,8 +13,8 @@ __all__ = ["MetalDriver", "MetalBackend", "MetalOptions"]
 def register_backend():
     """Register the Metal backend with Triton"""
     try:
-        from triton.backends import register_backend
-        from triton.backends.compiler import GPUTarget
+        from triton_metal.backends import register_backend
+        from triton_metal.backends.compiler import GPUTarget
         
         # Check if the Metal backend can be activated
         if MetalDriver.is_active():
@@ -23,7 +23,7 @@ def register_backend():
             
             # Log registration
             import logging
-            logger = logging.getLogger("triton.metal")
+            logger = logging.getLogger("triton_metal.metal")
             logger.info("Metal backend registered for Apple Silicon GPUs")
             
             # Register device detection

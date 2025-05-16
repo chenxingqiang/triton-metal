@@ -1,5 +1,5 @@
-from triton.backends.compiler import BaseBackend, GPUTarget
-from triton._C.libtriton import ir, passes, llvm, amd
+from triton_metal.backends.compiler import BaseBackend, GPUTarget
+from triton_metal._C.libtriton import ir, passes, llvm, amd
 from triton import knobs
 from dataclasses import dataclass
 from typing import Any, Dict, Tuple
@@ -135,9 +135,9 @@ class HIPBackend(BaseBackend):
         return {"min_dot_size": get_min_dot_size(self.target)}
 
     def get_module_map(self) -> Dict[str, ModuleType]:
-        from triton.language.extra.hip import libdevice
+        from triton_metal.language.extra.hip import libdevice
 
-        return {"triton.language.extra.libdevice": libdevice}
+        return {"triton_metal.language.extra.libdevice": libdevice}
 
     def load_dialects(self, ctx):
         amd.load_dialects(ctx)
@@ -380,7 +380,7 @@ class HIPBackend(BaseBackend):
     @staticmethod
     def make_amdgcn(src, metadata, options):
         # Find kernel names (there should only be one)
-        # We get the name at the last possible step to accommodate `triton.compile`
+        # We get the name at the last possible step to accommodate `triton_metal.compile`
         # on user-provided LLVM
         names = re.findall(r"define amdgpu_kernel void @([a-zA-Z_][a-zA-Z0-9_]*)", src)
         assert len(names) == 1

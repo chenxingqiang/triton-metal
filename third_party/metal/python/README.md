@@ -18,8 +18,8 @@ To use the Metal backend, set the `TRITON_BACKEND` environment variable before i
 import os
 os.environ["TRITON_BACKEND"] = "metal"
 
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 ```
 
 ## Features
@@ -41,12 +41,12 @@ The Triton Metal backend supports:
 import os
 os.environ["TRITON_BACKEND"] = "metal"
 
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 import numpy as np
 import mlx.core as mx
 
-@triton.jit
+@triton_metal.jit
 def add_kernel(x_ptr, y_ptr, output_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     # Grid-stride loop
     pid = tl.program_id(axis=0)
@@ -74,7 +74,7 @@ def main():
     output = mx.zeros((n_elements,))
     
     # Launch kernel
-    grid = (triton.cdiv(n_elements, 1024),)
+    grid = (triton_metal.cdiv(n_elements, 1024),)
     add_kernel[grid](x, y, output, n_elements, BLOCK_SIZE=1024)
     
     # Verify result
@@ -92,12 +92,12 @@ if __name__ == "__main__":
 import os
 os.environ["TRITON_BACKEND"] = "metal"
 
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 import mlx.core as mx
 import numpy as np
 
-@triton.jit
+@triton_metal.jit
 def matmul_kernel(
     a_ptr, b_ptr, c_ptr,
     M, N, K,
@@ -163,7 +163,7 @@ def main():
     BLOCK_M, BLOCK_N, BLOCK_K = 64, 64, 32
     
     # Launch grid
-    grid = (triton.cdiv(M, BLOCK_M), triton.cdiv(N, BLOCK_N))
+    grid = (triton_metal.cdiv(M, BLOCK_M), triton_metal.cdiv(N, BLOCK_N))
     
     # Get strides
     stride_am, stride_ak = a.stride(0), a.stride(1)
@@ -206,7 +206,7 @@ Example using M3 optimizations:
 import os
 os.environ["TRITON_BACKEND"] = "metal"
 
-import triton
+import triton_metal
 import mlx.core as mx
 from metal_hardware_optimizer import hardware_capabilities, AppleSiliconGeneration
 from m3_optimizations import m3_optimizer
@@ -243,13 +243,13 @@ Example using advanced memory patterns:
 import os
 os.environ["TRITON_BACKEND"] = "metal"
 
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 import mlx.core as mx
 from advanced_memory_patterns import memory_pattern_optimizer
 
 # Example with strided access
-@triton.jit
+@triton_metal.jit
 def strided_kernel(x_ptr, output_ptr, stride, n_elements, BLOCK_SIZE: tl.constexpr):
     pid = tl.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
@@ -273,7 +273,7 @@ For high-performance operations, the backend integrates with Metal Performance S
 import os
 os.environ["TRITON_BACKEND"] = "metal"
 
-import triton
+import triton_metal
 import mlx.core as mx
 from metal_performance_shaders import mps_integration, MPSOperation
 
@@ -329,7 +329,7 @@ Set the `TRITON_METAL_DEBUG` environment variable for more detailed logging:
 import os
 os.environ["TRITON_METAL_DEBUG"] = "1"
 os.environ["TRITON_BACKEND"] = "metal"
-import triton
+import triton_metal
 ```
 
 ## Contributing

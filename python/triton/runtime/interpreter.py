@@ -7,13 +7,13 @@ from typing import Tuple, List, Dict
 import math
 import numpy as np
 
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 import dataclasses
 from dataclasses import dataclass
 
-from triton.language import semantic
-from triton.tools.tensor_descriptor import TensorDescriptor
+from triton_metal.language import semantic
+from triton_metal.tools.tensor_descriptor import TensorDescriptor
 from .errors import InterpreterError
 from functools import partial
 from .._C.libtriton import interpreter as _interpreter
@@ -1093,7 +1093,7 @@ def _patch_lang_core(lang):
 
 def _patch_lang(fn):
     langs = [value for _, value in fn.__globals__.items() if inspect.ismodule(value) and value in [tl, tl.core]]
-    assert len(langs) >= 1, "triton.language must be visible from within jit'd function"
+    assert len(langs) >= 1, "triton_metal.language must be visible from within jit'd function"
     for lang in langs:
         _patch_builtin(lang, interpreter_builder)
         _patch_builtin(lang.tensor, interpreter_builder)
@@ -1116,7 +1116,7 @@ def _tuple_create(arg, contents):
 # TODO: wrap everything in triton tensors
 def _implicit_cvt(arg):
     if isinstance(arg, int):
-        ty = tl.str_to_ty(triton.runtime.jit.mangle_type(arg))
+        ty = tl.str_to_ty(triton_metal.runtime.jit.mangle_type(arg))
         dtype = np.int32
         if -2**31 <= arg < 2**31:
             dtype = np.int32
@@ -1131,7 +1131,7 @@ def _implicit_cvt(arg):
         handle = TensorHandle(np.array([arg], dtype=dtype), ty)
         return tl.tensor(handle, ty)
     if hasattr(arg, "data_ptr"):
-        ty = tl.str_to_ty(triton.runtime.jit.mangle_type(arg))
+        ty = tl.str_to_ty(triton_metal.runtime.jit.mangle_type(arg))
         handle = TensorHandle(np.array([arg.data_ptr()], dtype=np.uint64), ty)
         return tl.tensor(handle, ty)
     elif isinstance(arg, tuple):
@@ -1154,14 +1154,14 @@ interpreter_builder = InterpreterBuilder()
 
 
 def _unwrap_tensor(t):
-    if isinstance(t, triton.runtime.jit.TensorWrapper):
+    if isinstance(t, triton_metal.runtime.jit.TensorWrapper):
         return t.base
     return t
 
 
 def _rewrap_tensor(t, original_tensor):
-    if isinstance(original_tensor, triton.runtime.jit.TensorWrapper):
-        return triton.runtime.jit.TensorWrapper(t, original_tensor.dtype)
+    if isinstance(original_tensor, triton_metal.runtime.jit.TensorWrapper):
+        return triton_metal.runtime.jit.TensorWrapper(t, original_tensor.dtype)
     return t
 
 
@@ -1278,7 +1278,7 @@ class ASTTransformer(ast.NodeTransformer):
         if len(names) > 1:
             raise ValueError("Multiple assignments are not supported")
         # Modify the assignment x = value to
-        # triton.language.semantic.to_tensor(value, interpreter_builder, False)
+        # triton_metal.language.semantic.to_tensor(value, interpreter_builder, False)
         node.value = ast.Call(
             func=ast.Attribute(
                 value=ast.Attribute(
@@ -1308,9 +1308,9 @@ class FunctionRewriter:
             return self.fn
 
         # truncate lines before def
-        # @triton.autotune(...)
+        # @triton_metal.autotune(...)
         # ...
-        # @triton.jit
+        # @triton_metal.jit
         # ...
         # def foo(...): <- this line is the function definition
         self.filename, self.def_file_lineno = self._get_jit_fn_file_line()

@@ -12,7 +12,7 @@ import argparse
 # Add parent directory to path to allow importing from metal_auto_tuner
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from metal_auto_tuner import (
+from MLX.metal_auto_tuner import (
     MetalAutoTuner,
     TunableParam,
     ParamType,
@@ -22,16 +22,16 @@ from metal_auto_tuner import (
 
 # Import Triton if available
 try:
-    import triton
-    import triton.language as tl
-    from triton.runtime import driver
+    import triton_metal
+    import triton_metal.language as tl
+    from triton_metal.runtime import driver
     HAS_TRITON = True
 except ImportError:
     HAS_TRITON = False
     print("Triton not available. Will run a simulated example.")
 
 # Convolution kernel
-@triton.jit
+@triton_metal.jit
 def conv2d_kernel(
     # Pointers to tensors
     input_ptr, filter_ptr, output_ptr,
@@ -254,8 +254,8 @@ def test_conv2d(batch_size, in_h, in_w, in_c, out_c, filter_h, filter_w,
     # Define grid
     grid = lambda meta: (
         batch_size,
-        triton.cdiv(out_h, meta['BLOCK_X']),
-        triton.cdiv(out_w, meta['BLOCK_Y']),
+        triton_metal.cdiv(out_h, meta['BLOCK_X']),
+        triton_metal.cdiv(out_w, meta['BLOCK_Y']),
     )
     
     try:

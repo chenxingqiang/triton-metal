@@ -2,10 +2,10 @@
 
 import pytest
 import torch
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 
-from triton._internal_testing import is_cuda, is_hopper, is_hip_cdna, is_hip_cdna2, is_hip
+from triton_metal._internal_testing import is_cuda, is_hopper, is_hip_cdna, is_hip_cdna2, is_hip
 
 
 def check_capabilities():
@@ -15,7 +15,7 @@ def check_capabilities():
             pytest.skip("CUDA 8.0+ required")
 
 
-@triton.jit
+@triton_metal.jit
 def matmul_kernel(  #
         a_ptr, scale_ptr, b_ptr, output_ptr,  #
         M, N, K_MXFP,  # K_MXFP is the number of mxfp vectors in a row of a. Otherwise it's just K
@@ -72,7 +72,7 @@ def matmul_kernel(  #
     tl.store(output_ptrs, accumulator, mask=mask_c)
 
 
-@triton.jit
+@triton_metal.jit
 def matmul_kernel_tma(  #
         a_ptr, b_ptr, output_ptr,  #
         M, N, K,  #
@@ -97,7 +97,7 @@ def matmul_kernel_tma(  #
     output_ptr.store([offs_am, offs_bn], accumulator)
 
 
-@triton.jit
+@triton_metal.jit
 def vecadd_kernel(a_ptr, b_ptr, output_ptr, n_elements, num_blocks, BLOCK_SIZE: tl.constexpr, NUM_STAGES: tl.constexpr):
     pid = tl.program_id(axis=0)
     block_start = pid * BLOCK_SIZE * num_blocks
@@ -111,7 +111,7 @@ def vecadd_kernel(a_ptr, b_ptr, output_ptr, n_elements, num_blocks, BLOCK_SIZE: 
         offsets += BLOCK_SIZE
 
 
-@triton.jit
+@triton_metal.jit
 def mxfp_to_bf16_kernel(
     x_ptr,
     scale_ptr,
@@ -249,11 +249,11 @@ def test_pipeline_matmul(scale, device):
         scale_a = None
         a_type, b_type = None, None
         output = torch.empty((M, N), dtype=torch.float16, device=device)
-    grid = (triton.cdiv(M, BLOCK_M) * triton.cdiv(N, BLOCK_N), 1)
+    grid = (triton_metal.cdiv(M, BLOCK_M) * triton_metal.cdiv(N, BLOCK_N), 1)
     use_tma = not scale and is_hopper()
 
     if use_tma:
-        from triton.tools.tensor_descriptor import TensorDescriptor
+        from triton_metal.tools.tensor_descriptor import TensorDescriptor
         a_tma = TensorDescriptor.from_tensor(a, block_shape=[BLOCK_M, BLOCK_K])
         b_tma = TensorDescriptor.from_tensor(b, block_shape=[BLOCK_K, BLOCK_N])
         output_tma = TensorDescriptor.from_tensor(output, block_shape=[BLOCK_M, BLOCK_N])
@@ -327,7 +327,7 @@ def test_pipeline_vecadd(device):
     a = torch.randn(SIZE, dtype=torch.float16, device=device)
     b = torch.randn(SIZE, dtype=torch.float16, device=device)
     output = torch.empty(SIZE, dtype=torch.float16, device=device)
-    grid = (triton.cdiv(SIZE, NUM_BLOCKS * BLOCK_SIZE), 1)
+    grid = (triton_metal.cdiv(SIZE, NUM_BLOCKS * BLOCK_SIZE), 1)
     handler = vecadd_kernel[grid](a, b, output, SIZE, NUM_BLOCKS, BLOCK_SIZE, NUM_STAGES)
     ref_out = a + b
     torch.testing.assert_close(ref_out, output)
@@ -343,7 +343,7 @@ def test_pipeline_vecadd(device):
 @pytest.mark.parametrize("NUM_STAGES", [1, 2, 3, 4, 5])
 def test_pipeline_epilogue(ROW_COUNT, NUM_STAGES, device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel_up(output_ptr, input_ptr, input_row_stride, output_row_stride, n_rows, n_cols, BLOCK_SIZE: tl.constexpr,
                   NUM_STAGES: tl.constexpr):
         row_step = tl.num_programs(0)
@@ -363,7 +363,7 @@ def test_pipeline_epilogue(ROW_COUNT, NUM_STAGES, device):
     x = torch.zeros(width, depth, device=device)
     y0 = torch.rand_like(x)
     n_rows, n_cols = x.shape
-    BLOCK_SIZE = triton.next_power_of_2(n_cols)
+    BLOCK_SIZE = triton_metal.next_power_of_2(n_cols)
     kernel_up[(1, )](y0, x, x.stride(0), y0.stride(0), n_rows, n_cols, BLOCK_SIZE, NUM_STAGES)
     assert (y0 == torch.ones_like(x)).all()
 
@@ -382,7 +382,7 @@ def random_bfloat16(shape, device):
     return X
 
 
-@triton.jit
+@triton_metal.jit
 def indirect_matmul_kernel(
     Out,
     stride_out1,
@@ -457,7 +457,7 @@ def test_indirect_matmul(BLOCK_M, BLOCK_N, BLOCK_K, num_stages, device):
     torch.testing.assert_close(expect, Out)
 
 
-@triton.jit
+@triton_metal.jit
 def matmul_kernel_persistent_scatter(a_ptr, b_ptr, c_ptr,  #
                                      M, N, K,  #
                                      BLOCK_SIZE_M: tl.constexpr,  #
@@ -522,14 +522,14 @@ def test_scatter_pipeline(device):
     def alloc_fn(size, alignment, stream):
         return torch.empty(size, device="cuda", dtype=torch.int8)
 
-    triton.set_allocator(alloc_fn)
+    triton_metal.set_allocator(alloc_fn)
 
     M, N, K, = 1024, 1024, 1024
     BLOCK_M, BLOCK_N, BLOCK_K = 64, 64, 32
     GROUP_SIZE_M = 4
 
     NUM_SMS = torch.cuda.get_device_properties("cuda").multi_processor_count
-    grid_x = min(NUM_SMS, triton.cdiv(M, BLOCK_M) * triton.cdiv(N, BLOCK_N))
+    grid_x = min(NUM_SMS, triton_metal.cdiv(M, BLOCK_M) * triton_metal.cdiv(N, BLOCK_N))
 
     a = torch.randn(M, K, device=device, dtype=torch.float16)
     b = torch.randn(N, K, device=device, dtype=torch.float16)

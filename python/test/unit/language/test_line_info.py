@@ -4,48 +4,48 @@ import tempfile
 import pytest
 import torch
 
-import triton
-import triton.language as tl
-from triton._internal_testing import is_interpreter
+import triton_metal
+import triton_metal.language as tl
+from triton_metal._internal_testing import is_interpreter
 
 
-@triton.jit
+@triton_metal.jit
 def kernel_single(X, Y, BLOCK: tl.constexpr):
     x = tl.load(X + tl.arange(0, BLOCK))
     tl.store(Y + tl.arange(0, BLOCK), x)
 
 
-@triton.jit
+@triton_metal.jit
 def device_inline(x):
     return x + x
 
 
-@triton.jit
+@triton_metal.jit
 def kernel_call(X, Y, BLOCK: tl.constexpr):
     x = tl.load(X + tl.arange(0, BLOCK))
     y = device_inline(x)
     tl.store(Y + tl.arange(0, BLOCK), y)
 
 
-@triton.jit(noinline=True)
+@triton_metal.jit(noinline=True)
 def device_noinline(X, Y, BLOCK: tl.constexpr):
     x = tl.load(X + tl.arange(0, BLOCK))
     y = x + x
     tl.store(Y + tl.arange(0, BLOCK), y)
 
 
-@triton.jit
+@triton_metal.jit
 def kernel_call_noinline(X, Y, BLOCK: tl.constexpr):
     device_noinline(X, Y, BLOCK)
 
 
-@triton.autotune(
+@triton_metal.autotune(
     configs=[
-        triton.Config({"BLOCK": 128}, num_warps=4),
+        triton_metal.Config({"BLOCK": 128}, num_warps=4),
     ],
     key=[],
 )
-@triton.jit
+@triton_metal.jit
 def kernel_autotune(X, Y, SIZE: tl.constexpr, BLOCK: tl.constexpr):
     for i in range(0, SIZE, BLOCK):
         x = tl.load(X + i + tl.arange(0, BLOCK))
@@ -55,7 +55,7 @@ def kernel_autotune(X, Y, SIZE: tl.constexpr, BLOCK: tl.constexpr):
 # AddIOp(DotOp(a, b, c), d) and c==0 => DotOp(a, b, d)
 # Since the + symbol will take effect in the dot op after combination,
 # it seems making sense to annotate with the same line as dot.
-@triton.jit
+@triton_metal.jit
 def kernel_dot_combine(x):
     c = tl.full((32, 32), 4, dtype=tl.int8)
     a = (tl.arange(0, 32)[:, None] + tl.arange(0, 32)[None, :]).to(tl.int8)
@@ -65,7 +65,7 @@ def kernel_dot_combine(x):
 
 
 # Call another jit function (cdiv) not in this file
-@triton.jit
+@triton_metal.jit
 def kernel_cdiv(x):
     c = tl.full((32, 32), 4, dtype=tl.int8)
     d = tl.cdiv(c, 4)
@@ -78,10 +78,10 @@ def get_disassembler_command_and_debug_line_format():
     Returns a tuple: (object file kind, disassembler tool command,
     debug line anchor, debug line file and line number separator).
     """
-    backend = triton.runtime.driver.active.get_current_target().backend
+    backend = triton_metal.runtime.driver.active.get_current_target().backend
 
     if backend == "cuda":
-        nvdisasm = triton.knobs.nvidia.nvdisasm.path
+        nvdisasm = triton_metal.knobs.nvidia.nvdisasm.path
         return ("cubin", [nvdisasm, "-g"], "## File", ",")
 
     if backend == "hip":
@@ -244,7 +244,7 @@ def test_line_info_ir_source(monkeypatch, status, tmp_path):
     monkeypatch.setenv("USE_IR_LOC", status)
     temp_file = tmp_path / "test.ttir"
     temp_file.write_text(src)
-    kernel_info = triton.compile(str(temp_file))
+    kernel_info = triton_metal.compile(str(temp_file))
     file_lines = extract_file_lines(command, anchor, separator, kernel_info.asm[obj_kind])
     if status == "ttir":
         assert check_file_lines(file_lines, "/path/test.py", 8, should_contain=False)

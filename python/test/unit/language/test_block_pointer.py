@@ -1,12 +1,12 @@
 import pytest
 import torch
 
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 from test_core import check_type_supported
 
 
-@triton.jit
+@triton_metal.jit
 def block_copy_kernel(a_ptr, b_ptr, N, BLOCK_SIZE: tl.constexpr, PADDING_OPTION: tl.constexpr,
                       TEST_LOWER_BOUND: tl.constexpr, TEST_UPPER_BOUND: tl.constexpr):
     pid = tl.program_id(0)
@@ -51,7 +51,7 @@ def test_block_copy(dtypes_str, n, padding_option, boundary_check, device):
         a = torch.randn((n, ), device=device, dtype=src_dtype)
     b = torch.zeros((n, ), device=device, dtype=dst_dtype)
 
-    grid = lambda meta: (triton.cdiv(n, meta["BLOCK_SIZE"]), )
+    grid = lambda meta: (triton_metal.cdiv(n, meta["BLOCK_SIZE"]), )
     block_copy_kernel[grid](a_ptr=a, b_ptr=b, N=n, BLOCK_SIZE=64, PADDING_OPTION=padding_option,
                             TEST_LOWER_BOUND=boundary_check == "lower", TEST_UPPER_BOUND=boundary_check == "upper")
     a.to(dst_dtype)
@@ -65,7 +65,7 @@ def test_block_copy(dtypes_str, n, padding_option, boundary_check, device):
             assert torch.all(torch.isnan(b[n // 2:n]))
 
 
-@triton.jit
+@triton_metal.jit
 def matmul_no_scf_with_advance_kernel(  #
         a_ptr, b_ptr, c_ptr,  #
         M, N, K,  #

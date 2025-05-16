@@ -1,16 +1,16 @@
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 
-from triton.backends.compiler import GPUTarget
-from triton.knobs import CompileTimes
-from triton.compiler.compiler import ASTSource, IRSource
+from triton_metal.backends.compiler import GPUTarget
+from triton_metal.knobs import CompileTimes
+from triton_metal.compiler.compiler import ASTSource, IRSource
 
 from typing import Any, Union
 
 import torch
 
 
-@triton.jit
+@triton_metal.jit
 def cumsum_kernel(ptr):
     block = ptr + tl.arange(0, 4)
     x = tl.load(block)

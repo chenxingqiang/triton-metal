@@ -20,11 +20,11 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import Triton for kernel definition
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 
 # Define a simple reduction kernel using Triton
-@triton.jit
+@triton_metal.jit
 def sum_reduction_kernel(
     x_ptr,  # pointer to input array
     y_ptr,  # pointer to output array
@@ -49,7 +49,7 @@ def sum_reduction_kernel(
     # Store result for this block
     tl.store(y_ptr + pid, sum_value)
 
-@triton.jit
+@triton_metal.jit
 def final_reduction_kernel(
     x_ptr,  # pointer to partial reduction results
     y_ptr,  # pointer to final result

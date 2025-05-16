@@ -1,5 +1,5 @@
 import torch
-import triton
+import triton_metal
 
 cached_capabilities = {}
 
@@ -32,7 +32,7 @@ def get_cdna_version():
     only supports 3 (gfx942) or 4 (gfx950). Returns -1 if it is not AMD
     hardware or unsupported architecture
     """
-    target = triton.runtime.driver.active.get_current_target()
+    target = triton_metal.runtime.driver.active.get_current_target()
     if target.backend != 'hip':
         return -1
     if target.arch == 'gfx942':

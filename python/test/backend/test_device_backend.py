@@ -10,12 +10,12 @@ from pathlib import Path
 
 import torch
 
-import triton
-import triton.language as tl
-from triton.common.backend import (BaseBackend, compute_core_version_key, register_backend)
-from triton.compiler.make_launcher import make_so_cache_key
-from triton.runtime.cache import get_cache_manager
-from triton.runtime.driver import DriverBase
+import triton_metal
+import triton_metal.language as tl
+from triton_metal.common.backend import (BaseBackend, compute_core_version_key, register_backend)
+from triton_metal.compiler.make_launcher import make_so_cache_key
+from triton_metal.runtime.cache import get_cache_manager
+from triton_metal.runtime.driver import DriverBase
 
 
 def build_for_backend(name, src, srcdir):
@@ -211,7 +211,7 @@ class ExtensionBackend(BaseBackend):
 def test_dummy_backend():
     register_backend("cpu", ExtensionBackend)
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(in_ptr0, out_ptr0, xnumel, XBLOCK: tl.constexpr):
         xnumel = 10
         xoffset = tl.program_id(0) * XBLOCK

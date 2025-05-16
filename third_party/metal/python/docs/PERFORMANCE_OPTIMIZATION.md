@@ -33,7 +33,7 @@ To optimize for Metal, it's important to understand the Apple Silicon GPU archit
 Optimized memory access is critical for Metal performance:
 
 ```python
-@triton.jit
+@triton_metal.jit
 def optimized_kernel(
     x_ptr, output_ptr, n,
     BLOCK_SIZE: tl.constexpr,
@@ -69,10 +69,10 @@ def optimized_kernel(
 Optimal threadgroup sizes differ from CUDA:
 
 ```python
-@triton.jit(
+@triton_metal.jit(
     configs=[
-        triton.Config({'BLOCK_SIZE': 128}),
-        triton.Config({'BLOCK_SIZE': 256}),
+        triton_metal.Config({'BLOCK_SIZE': 128}),
+        triton_metal.Config({'BLOCK_SIZE': 256}),
     ],
     autotune=True
 )
@@ -92,7 +92,7 @@ Choosing the right data types impacts performance significantly:
 
 ```python
 # Example of mixed precision
-@triton.jit
+@triton_metal.jit
 def mixed_precision_matmul(
     a_ptr, b_ptr, c_ptr, M, N, K,
     BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, BLOCK_K: tl.constexpr,
@@ -124,7 +124,7 @@ Fusing operations reduces memory bandwidth requirements:
 
 ```python
 # Instead of separate kernels for each operation:
-@triton.jit
+@triton_metal.jit
 def fused_kernel(
     x_ptr, y_ptr, output_ptr, n,
     BLOCK_SIZE: tl.constexpr,
@@ -158,7 +158,7 @@ def fused_kernel(
 ### M1 Optimization
 
 ```python
-@triton.jit
+@triton_metal.jit
 def m1_optimized_kernel(...):
     # Prefer bandwidth-optimized algorithms
     # Avoid heavy use of atomic operations
@@ -175,7 +175,7 @@ def m1_optimized_kernel(...):
 ### M2 Optimization
 
 ```python
-@triton.jit
+@triton_metal.jit
 def m2_optimized_kernel(...):
     # Leverage improved half-precision performance
     # Use larger threadgroup sizes than M1 (192-256 threads)
@@ -192,7 +192,7 @@ def m2_optimized_kernel(...):
 ### M3 Optimization
 
 ```python
-@triton.jit
+@triton_metal.jit
 def m3_optimized_kernel(...):
     # Leverage advanced memory layout optimizations
     # Take advantage of operation fusion
@@ -211,7 +211,7 @@ def m3_optimized_kernel(...):
 ### Matrix Multiplication Optimization
 
 ```python
-@triton.jit
+@triton_metal.jit
 def optimized_matmul(
     a_ptr, b_ptr, c_ptr, M, N, K,
     BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, BLOCK_K: tl.constexpr,
@@ -247,7 +247,7 @@ def optimized_matmul(
 ### Reduction Operation Optimization
 
 ```python
-@triton.jit
+@triton_metal.jit
 def optimized_reduction(
     input_ptr, output_ptr, n,
     BLOCK_SIZE: tl.constexpr,
@@ -279,7 +279,7 @@ def optimized_reduction(
 ### Convolution Optimization
 
 ```python
-@triton.jit
+@triton_metal.jit
 def optimized_conv(
     input_ptr, filter_ptr, output_ptr,
     batch, in_h, in_w, in_c, out_c, k_h, k_w,
@@ -305,12 +305,12 @@ def optimized_conv(
 The Metal backend includes an autotuning system:
 
 ```python
-@triton.jit(
+@triton_metal.jit(
     autotune=True,
     configs=[
-        triton.Config({'BLOCK_SIZE': 128, 'NUM_WARPS': 4}),
-        triton.Config({'BLOCK_SIZE': 256, 'NUM_WARPS': 8}),
-        triton.Config({'BLOCK_SIZE': 512, 'NUM_WARPS': 16}),
+        triton_metal.Config({'BLOCK_SIZE': 128, 'NUM_WARPS': 4}),
+        triton_metal.Config({'BLOCK_SIZE': 256, 'NUM_WARPS': 8}),
+        triton_metal.Config({'BLOCK_SIZE': 512, 'NUM_WARPS': 16}),
     ],
     key=['n']
 )
@@ -334,7 +334,7 @@ def autotuned_kernel(
 Effective use of threadgroup memory (shared memory):
 
 ```python
-@triton.jit
+@triton_metal.jit
 def shared_memory_kernel(
     x_ptr, output_ptr, n,
     BLOCK_SIZE: tl.constexpr,
@@ -373,7 +373,7 @@ def shared_memory_kernel(
 Minimize memory usage:
 
 ```python
-@triton.jit
+@triton_metal.jit
 def memory_efficient_kernel(...):
     # Use in-place operations
     # Reuse temporary storage
@@ -385,14 +385,14 @@ def memory_efficient_kernel(...):
 - In-place operations when possible
 - Reuse temporary storage
 - Use appropriate precision (float16 vs float32)
-- Clear unneeded buffers with `triton.backends.metal.clear_cache()`
+- Clear unneeded buffers with `triton_metal.backends.metal.clear_cache()`
 
 ### 4. Hardware-Aware Synchronization
 
 Optimize synchronization based on hardware:
 
 ```python
-@triton.jit
+@triton_metal.jit
 def optimized_sync_kernel(...):
     # M1: Minimize barriers
     # M2/M3: Use fine-grained synchronization
@@ -419,14 +419,14 @@ def optimized_sync_kernel(...):
 
 ```python
 import time
-import triton
-import triton.backends.metal as metal
+import triton_metal
+import triton_metal.backends.metal as metal
 
 # Start profiling
 metal.start_profiling()
 
 # Define your kernel
-@triton.jit
+@triton_metal.jit
 def my_kernel(...):
     # Kernel code
 
@@ -474,7 +474,7 @@ Interpreting the results:
 ### Example: Optimized Transformer Block
 
 ```python
-@triton.jit(autotune=True)
+@triton_metal.jit(autotune=True)
 def optimized_attention(q_ptr, k_ptr, v_ptr, output_ptr, ...):
     # Optimize attention pattern for Metal
     # Use half-precision for most operations
@@ -491,7 +491,7 @@ def optimized_attention(q_ptr, k_ptr, v_ptr, output_ptr, ...):
 ### Example: Optimized Image Processing
 
 ```python
-@triton.jit
+@triton_metal.jit
 def optimized_image_kernel(
     input_ptr, output_ptr, height, width, channels,
     BLOCK_X: tl.constexpr, BLOCK_Y: tl.constexpr
@@ -523,4 +523,4 @@ By following these guidelines, you can achieve performance comparable to or bett
 
 - [Apple Metal Programming Guide](https://developer.apple.com/metal/)
 - [MLX Performance Optimization Guide](https://ml-explore.github.io/mlx/build/html/usage/performance.html)
-- [Triton Programming Guide](https://triton-lang.org/master/programming-guide/chapter-1/index.html) 
+- [Triton Programming Guide](https://chenxingqiang.github.io/triton-metalmaster/programming-guide/chapter-1/index.html) 

@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from functools import cached_property
 from typing import Callable, Generic, Iterable, Optional, TypeVar, Union, overload, Dict, Any, Tuple
 
-from triton.tools.tensor_descriptor import TensorDescriptor
+from triton_metal.tools.tensor_descriptor import TensorDescriptor
 from types import ModuleType
 from .. import knobs
 from ..runtime.driver import driver
@@ -224,7 +224,7 @@ class DependenciesFinder(ast.NodeVisitor):
 
 
 def _normalize_ty(ty) -> str:
-    import triton.language.core as core
+    import triton_metal.language.core as core
     if isinstance(ty, str):
         ty = ty.strip()
         if ty.startswith("const "):
@@ -714,7 +714,7 @@ class JITFunction(KernelInterface[T]):
     def preload(self, specialization_data):
         from ..compiler import compile, ASTSource
         import json
-        import triton.language as tl
+        import triton_metal.language as tl
         device = driver.active.get_current_device()
         deserialized_obj = json.loads(specialization_data)
         if deserialized_obj['name'] != self.fn.__name__:
@@ -751,7 +751,7 @@ class JITFunction(KernelInterface[T]):
         return tree
 
     def __call__(self, *args, **kwargs):
-        raise RuntimeError("Cannot call @triton.jit'd outside of the scope of a kernel")
+        raise RuntimeError("Cannot call @triton_metal.jit'd outside of the scope of a kernel")
 
     def __setattr__(self, name, value):
         # - when `.src` attribute is set, cache key of all callers need to be re-computed
@@ -940,9 +940,9 @@ def get_jit_fn_file_line(fn):
     file_name = base_fn.fn.__code__.co_filename
     lines, begin_line = inspect.getsourcelines(base_fn.fn)
     # Match the following pattern:
-    # @triton.autotune(...) <- foo.__code__.co_firstlineno
-    # @triton.heuristics(...)
-    # @triton.jit
+    # @triton_metal.autotune(...) <- foo.__code__.co_firstlineno
+    # @triton_metal.heuristics(...)
+    # @triton_metal.jit
     # def foo(...): <- this line is the first line
     for idx, line in enumerate(lines):
         if line.strip().startswith("def "):

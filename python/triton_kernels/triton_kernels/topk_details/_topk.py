@@ -1,8 +1,8 @@
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 
 
-@triton.jit
+@triton_metal.jit
 def streaming_topk(X, stride_xm, n_expts_tot, offs_m, mask_m, N_EXPTS_PAD: tl.constexpr, N_EXPTS_ACT: tl.constexpr,
                    BLOCK_N: tl.constexpr):
 
@@ -33,7 +33,7 @@ def streaming_topk(X, stride_xm, n_expts_tot, offs_m, mask_m, N_EXPTS_PAD: tl.co
     return acc
 
 
-@triton.jit
+@triton_metal.jit
 def _topk(X, stride_xm,  # inputs
           Yv, Yi, stride_ym,  # topk values/indices
           Bits, stride_rm, n_rows,  # bitmatrix

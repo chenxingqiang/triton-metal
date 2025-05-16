@@ -5,16 +5,16 @@ import sysconfig
 import hashlib
 import subprocess
 import tempfile
-import triton
+import triton_metal
 from pathlib import Path
 from triton import knobs
-from triton.runtime.build import _build
-from triton.runtime.cache import get_cache_manager
-from triton.runtime import _allocation
-from triton.backends.compiler import GPUTarget
-from triton.backends.driver import GPUDriver, platform_key
+from triton_metal.runtime.build import _build
+from triton_metal.runtime.cache import get_cache_manager
+from triton_metal.runtime import _allocation
+from triton_metal.backends.compiler import GPUTarget
+from triton_metal.backends.driver import GPUDriver, platform_key
 
-from triton.tools.tensor_descriptor import TensorDescriptor
+from triton_metal.tools.tensor_descriptor import TensorDescriptor
 
 dirname = os.path.dirname(os.path.realpath(__file__))
 include_dir = [os.path.join(dirname, "include")]
@@ -569,7 +569,7 @@ def make_tensordesc_arg(arg, metadata):
     if fp4_padded:
         shape = list(shape)
         shape[-1] *= 2
-    triton.runtime.driver.active.utils.fill_tma_descriptor(
+    triton_metal.runtime.driver.active.utils.fill_tma_descriptor(
         desc.tma_desc_cpu_ptr(),
         data_ptr,
         swizzle,
@@ -666,7 +666,7 @@ class CudaDriver(GPUDriver):
             return False
 
     def get_benchmarker(self):
-        from triton.testing import do_bench
+        from triton_metal.testing import do_bench
         return do_bench
 
     def get_empty_cache_for_benchmark(self):

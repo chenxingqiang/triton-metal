@@ -3,8 +3,8 @@ import pytest
 import torch
 from numpy.random import RandomState
 
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 
 
 def test_chained_matmul(device):
@@ -13,7 +13,7 @@ def test_chained_matmul(device):
         intermediate = torch.einsum('MK,NK->MN', a, b)
         return torch.einsum('MN,NK->MK', intermediate, c)
 
-    @triton.jit
+    @triton_metal.jit
     def chained_matmul_kernel(A,  # shape: (m, k)
                               B,  # shape: (n, k)
                               C,  # shape: (n, k)
@@ -51,7 +51,7 @@ def test_chained_matmul(device):
     m, n, k = 32, 64, 128
     block_m, block_n, block_k = 16, 32, k
 
-    grid = (triton.cdiv(m, block_m), )
+    grid = (triton_metal.cdiv(m, block_m), )
     a = torch.randint(low=0, high=2, size=(m, k), dtype=torch.float16, device=device)
     b = torch.randint(low=0, high=2, size=(n, k), dtype=torch.float16, device=device)
     c = torch.randint_like(b, low=0, high=2)
@@ -67,7 +67,7 @@ def test_chained_matmul(device):
 
 def test_vecmat(device):
 
-    @triton.jit
+    @triton_metal.jit
     def batched_vecmat(
             # inputs
             A,  # shape: [dim_m, dim_k]
@@ -136,7 +136,7 @@ def test_vecmat(device):
                          ["pre_load", "post_load", "post_pre_mixed", "post_load_two_iters", "post_load_three_iters"])
 def test_iv_dependent_matmul(type, device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(a_ptr, b_ptr, c_ptr,  #
                M, N, K,  #
                stride_am, stride_ak,  #
@@ -214,7 +214,7 @@ def test_iv_dependent_matmul(type, device):
     triton_output = torch.empty_like(torch_output, device=torch_output.device)
 
     def grid(META):
-        return (triton.cdiv(M, META['BLOCK_SIZE_M']) * triton.cdiv(N, META['BLOCK_SIZE_N']), )
+        return (triton_metal.cdiv(M, META['BLOCK_SIZE_M']) * triton_metal.cdiv(N, META['BLOCK_SIZE_N']), )
 
     num_stages = 4 if type == "post_load_three_iters" else 3
     kernel[grid](
@@ -228,7 +228,7 @@ def test_iv_dependent_matmul(type, device):
 
 def test_reverse_range(device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(in_ptr, out_ptr):
         x0 = tl.arange(0, 512)
         tmp0 = tl.load(in_ptr + (512 - x0))
@@ -241,7 +241,7 @@ def test_reverse_range(device):
     assert (res == ref).all()
 
 
-@triton.jit
+@triton_metal.jit
 def _triton_cummax_helper_fn(arg0_0, arg0_1, arg1_0, arg1_1):
     tmp0 = arg0_0 > arg1_0
     tmp1 = arg0_0 == arg1_0
@@ -255,7 +255,7 @@ def _triton_cummax_helper_fn(arg0_0, arg0_1, arg1_0, arg1_1):
 
 def test_inductor_cummax_bool(device):
 
-    @triton.jit
+    @triton_metal.jit
     def triton_(in_ptr0, out_ptr0, out_ptr1, XBLOCK: tl.constexpr):
         offset = tl.arange(0, XBLOCK)
         tmp0 = tl.load(in_ptr0 + offset).to(tl.int1)

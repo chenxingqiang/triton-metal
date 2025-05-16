@@ -1,12 +1,12 @@
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 from triton_kernels.numerics_details.mxfp import _unswizzle_mx_block, get_scaled_dot_format_string
 from triton_kernels.numerics_details.flexpoint import float_to_flex, load_scale
 from ._common import make_matmul_repr, matmul_launch_metadata, swizzle2d, xcd_swizzle
 
 # fmt: off
 
-@triton.jit
+@triton_metal.jit
 def _zero_masked_rows(
         pid_m, pid_n,
         Y, stride_y_m, stride_y_n,
@@ -23,7 +23,7 @@ def _zero_masked_rows(
 
 
 _matmul_ogs_repr = make_matmul_repr("_matmul_ogs", [0, 1, 2])
-@triton.jit(repr=_matmul_ogs_repr, launch_metadata=matmul_launch_metadata)
+@triton_metal.jit(repr=_matmul_ogs_repr, launch_metadata=matmul_launch_metadata)
 def _matmul_ogs(
              Y, Out, stride_y_k, stride_y_z, stride_y_m, stride_y_n,
              YExpectedScale, YActualScale, YChecksumScale,
@@ -284,7 +284,7 @@ def _matmul_ogs(
 #    [5] = 5+5=10
 #    [6] = 5+6=11
 #    [7] = -1     : unused (there are only seven intermediate rows)
-@triton.jit
+@triton_metal.jit
 def _compute_writeback_idx(
     WriteBackIndx,
     FinalizeScatterIdxs,

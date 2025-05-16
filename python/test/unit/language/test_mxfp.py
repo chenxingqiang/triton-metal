@@ -1,6 +1,6 @@
 import pytest
 import torch
-from triton.tools.mxfp import MXFP4Tensor, MXScaleTensor
+from triton_metal.tools.mxfp import MXFP4Tensor, MXScaleTensor
 
 
 class MXBaseTest:

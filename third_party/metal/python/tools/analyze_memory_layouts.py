@@ -22,7 +22,7 @@ if parent_dir not in sys.path:
 
 # Try to import Metal backend components
 try:
-    from metal_memory_manager import MemoryLayout
+    from MLX.metal_memory_manager import MemoryLayout
     METAL_BACKEND_AVAILABLE = True
 except ImportError:
     print("Warning: Metal backend components not available.")

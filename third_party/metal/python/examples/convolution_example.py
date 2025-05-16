@@ -6,8 +6,8 @@
 
 import torch
 import torch.nn as nn
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 import argparse
 import time
 import os
@@ -25,7 +25,7 @@ if use_metal:
 
 
 # Define a direct convolution kernel in Triton
-@triton.jit
+@triton_metal.jit
 def conv2d_kernel(
     # Pointers to tensors
     x_ptr, w_ptr, y_ptr,
@@ -196,7 +196,7 @@ def triton_conv2d(x, w, stride=(1, 1), padding=(0, 0)):
         (8, 8, 16, 2),    # Spatial-heavy
     ]:
         configs.append(
-            triton.Config({
+            triton_metal.Config({
                 'BLOCK_SIZE_N': 1,                # Process 1 batch at a time
                 'BLOCK_SIZE_OC': block_oc,        # Output channels per block
                 'BLOCK_SIZE_OH': block_oh,        # Output height per block
@@ -212,7 +212,7 @@ def triton_conv2d(x, w, stride=(1, 1), padding=(0, 0)):
         (16, 16, 16, 8),   # Spatial balance with M3 vectorization
     ]:
         configs.append(
-            triton.Config({
+            triton_metal.Config({
                 'BLOCK_SIZE_N': 1,
                 'BLOCK_SIZE_OC': block_oc,
                 'BLOCK_SIZE_OH': block_oh,
@@ -224,9 +224,9 @@ def triton_conv2d(x, w, stride=(1, 1), padding=(0, 0)):
     # Define grid
     grid = lambda meta: (
         batch_size * 
-        triton.cdiv(out_channels, meta['BLOCK_SIZE_OC']) *
-        triton.cdiv(out_height, meta['BLOCK_SIZE_OH']) *
-        triton.cdiv(out_width, meta['BLOCK_SIZE_OW']),
+        triton_metal.cdiv(out_channels, meta['BLOCK_SIZE_OC']) *
+        triton_metal.cdiv(out_height, meta['BLOCK_SIZE_OH']) *
+        triton_metal.cdiv(out_width, meta['BLOCK_SIZE_OW']),
     )
     
     # Launch kernel with auto-tuning

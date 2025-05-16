@@ -9,9 +9,9 @@ TODO: float8 types
 import pytest
 import torch
 
-import triton
-import triton.language as tl
-from triton._internal_testing import is_hip_cdna3, is_cuda
+import triton_metal
+import triton_metal.language as tl
+from triton_metal._internal_testing import is_hip_cdna3, is_cuda
 
 input_dtypes = ["bfloat16", "float16", "float32", "float64"]
 if is_cuda():
@@ -30,7 +30,7 @@ elif is_hip_cdna3():
 out_dtypes = ["float16", "float32"]
 
 
-@triton.jit
+@triton_metal.jit
 def matmul_kernel(A, B, C, M, N, K,  #
                   stride_am, stride_ak,  #
                   stride_bk, stride_bn,  #
@@ -111,13 +111,13 @@ def test_cast_matmul(M, K, N, BLOCK_K, BLOCK_M, BLOCK_N, w_dtype, x_dtype, out_d
 
     # launch kernel
     block_m, block_n, block_k = BLOCK_M, BLOCK_N, BLOCK_K
-    grid = ((triton.cdiv(M, block_m) * triton.cdiv(N, block_n)), 1)
+    grid = ((triton_metal.cdiv(M, block_m) * triton_metal.cdiv(N, block_n)), 1)
 
     matmul_kernel[grid](
         a, b, out_triton, M, N, K,  #
         a.stride(0), a.stride(1),  #
         b.stride(0), b.stride(1),  #
-        out_triton.stride(0), out_triton.stride(1), dot_out_dtype=triton_dtype,  #
+        out_triton_metal.stride(0), out_triton_metal.stride(1), dot_out_dtype=triton_dtype,  #
         GROUP_M=8,  #
         BLOCK_M=block_m,  #
         BLOCK_N=block_n,  #

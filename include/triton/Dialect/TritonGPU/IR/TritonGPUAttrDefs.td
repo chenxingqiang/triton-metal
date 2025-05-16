@@ -43,7 +43,7 @@ Then, attaching $\mathcal{L} to a tensor $T$ would mean that:
 
 Right now, Triton implements two main classes of layouts: shared, and distributed.
   }];
-  let attrName = "triton.gpu." # attrMnemonic;
+  let attrName = "triton_metal.gpu." # attrMnemonic;
 
   code extraBaseClassDeclaration = [{
   }];

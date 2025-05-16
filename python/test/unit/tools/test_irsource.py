@@ -1,9 +1,9 @@
 import pathlib
-import triton
-from triton.compiler import IRSource, make_backend
-from triton._C.libtriton import ir
+import triton_metal
+from triton_metal.compiler import IRSource, make_backend
+from triton_metal._C.libtriton import ir
 
-target = triton.runtime.driver.active.get_current_target()
+target = triton_metal.runtime.driver.active.get_current_target()
 backend = make_backend(target)
 
 
@@ -89,4 +89,4 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 8 : i32, ttg.targ
     src = IRSource(str(temp_file), context, backend)
 
     # now test compilation
-    triton.compile(str(temp_file), target=target)
+    triton_metal.compile(str(temp_file), target=target)

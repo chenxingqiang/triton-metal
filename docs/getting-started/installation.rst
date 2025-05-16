@@ -35,7 +35,7 @@ You can install the Python package from source by running the following commands
 
 .. code-block:: bash
 
-      git clone https://github.com/triton-lang/triton.git;
+      git clone https://github.com/triton-lang/triton_metal.git;
       cd triton/python;
       pip install ninja cmake wheel; # build-time dependencies
       pip install -e .

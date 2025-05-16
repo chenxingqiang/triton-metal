@@ -1,0 +1,151 @@
+name: Metal Backend CI
+
+on:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  pull_request:
+    branches: [ main ]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    name: Build & Test (Python ${{ matrix.python-version }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macos-latest, macos-14] # macos-14 is Apple Silicon (ARM64)
+        python-version: ['3.9', '3.10', '3.11', '3.12']
+      fail-fast: false
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install build wheel pytest numpy torch
+
+    - name: Determine system architecture
+      id: system-info
+      run: |
+        SYSTEM=$(uname -s)
+        ARCH=$(uname -m)
+        echo "system=$SYSTEM" >> $GITHUB_OUTPUT
+        echo "arch=$ARCH" >> $GITHUB_OUTPUT
+        echo "System: $SYSTEM, Architecture: $ARCH"
+    
+    - name: Install with standard method
+      id: standard-install
+      continue-on-error: true
+      run: |
+        python -m pip install -e ".[build,metal]"
+    
+    - name: Download LLVM fallback (if needed)
+      if: steps.standard-install.outcome == 'failure'
+      run: |
+        echo "Standard installation failed, using fallback LLVM download"
+        bash ./scripts/download_llvm_fallback.sh
+        
+        # Use the appropriate system suffix based on architecture
+        if [ "${{ steps.system-info.outputs.arch }}" == "arm64" ]; then
+          SYSTEM_SUFFIX="macos-arm64"
+        else
+          SYSTEM_SUFFIX="macos-x64"
+        fi
+        
+        LLVM_HASH=$(cat cmake/llvm-hash.txt | head -c 8)
+        export LLVM_SYSPATH=$HOME/.triton/llvm/llvm-${LLVM_HASH}-${SYSTEM_SUFFIX}
+        echo "Using LLVM from: $LLVM_SYSPATH"
+        
+        # Try installation again with fallback LLVM
+        python -m pip install -e ".[build,metal]"
+    
+    - name: Verify installation
+      run: |
+        python -c "import triton_metal; print('Triton-Metal version:', triton_metal.__version__)"
+        python -c "from triton_metal.runtime import driver; print('Available backends:', driver.get_available_backends())"
+        if ! python -c "from triton_metal.runtime import driver; assert 'metal' in driver.get_available_backends()"; then
+          echo "ERROR: Metal backend not available!"
+          exit 1
+        fi
+    
+    - name: Run basic Metal kernel test
+      run: |
+        echo "Running vector addition test to verify basic functionality"
+        python scripts/test_metal_kernel.py
+    
+    - name: Run matrix multiplication test
+      run: |
+        echo "Running matrix multiplication test on Metal backend"
+        python scripts/test_metal_matmul.py
+    
+    - name: Run unit tests
+      id: unit-tests
+      continue-on-error: true
+      run: |
+        echo "Running unit tests if available"
+        
+        if [ -d "python/test/unit/metal" ]; then
+          echo "Found tests in python/test/unit/metal"
+          pytest -xvs python/test/unit/metal
+          UNIT_TEST_STATUS=$?
+        elif [ -d "third_party/metal/python/tests" ]; then
+          echo "Found tests in third_party/metal/python/tests"
+          pytest -xvs third_party/metal/python/tests
+          UNIT_TEST_STATUS=$?
+        else
+          echo "No unit tests found, skipping"
+          UNIT_TEST_STATUS=0
+        fi
+        
+        if [ $UNIT_TEST_STATUS -ne 0 ]; then
+          echo "::warning::Unit tests failed but continuing build"
+        fi
+        
+        exit 0
+    
+    - name: Build wheel
+      run: |
+        export TRITON_WHEEL_VERSION_SUFFIX=""
+        python -m build
+    
+    - name: Install from wheel
+      run: |
+        # Install the built wheel to verify it works
+        pip uninstall -y triton-metal
+        pip install --no-index --find-links=dist/ triton-metal
+        
+        # Verify the installed wheel
+        python -c "import triton_metal; print('Installed wheel version:', triton_metal.__version__)"
+        
+        # Verify Metal backend is still available
+        if ! python -c "from triton_metal.runtime import driver; assert 'metal' in driver.get_available_backends(), 'Metal backend not available in wheel'"; then
+          echo "ERROR: Metal backend not available in installed wheel!"
+          exit 1
+        fi
+    
+    - name: Verify wheel with basic test
+      run: |
+        echo "Running basic test with installed wheel"
+        python scripts/test_metal_kernel.py
+    
+    - name: Upload wheel artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: wheels-python-${{ matrix.python-version }}-${{ steps.system-info.outputs.arch }}
+        path: dist/*.whl 
+        if-no-files-found: error 

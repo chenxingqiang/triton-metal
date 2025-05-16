@@ -1,17 +1,17 @@
 import torch
-import triton
-import triton.profiler as proton
+import triton_metal
+import triton_metal.profiler as proton
 import json
 import pytest
 from typing import NamedTuple
 import pathlib
 
-import triton.language as tl
-from triton.profiler.hook import COMPUTE_METADATA_SCOPE_NAME
+import triton_metal.language as tl
+from triton_metal.profiler.hook import COMPUTE_METADATA_SCOPE_NAME
 
 
 def is_hip():
-    return triton.runtime.driver.active.get_current_target().backend == "hip"
+    return triton_metal.runtime.driver.active.get_current_target().backend == "hip"
 
 
 @pytest.mark.parametrize("context", ["shadow", "python"])
@@ -43,13 +43,13 @@ def test_torch(context, tmp_path: pathlib.Path):
 
 def test_triton(tmp_path: pathlib.Path):
 
-    @triton.jit
+    @triton_metal.jit
     def foo(x, y):
         tl.store(y, tl.load(x))
 
     x = torch.tensor([2], device="cuda")
     y = torch.zeros_like(x)
-    temp_file = tmp_path / "test_triton.hatchet"
+    temp_file = tmp_path / "test_triton_metal.hatchet"
     proton.start(str(temp_file.with_suffix("")))
     with proton.scope("test0"):
         with proton.scope("test1"):
@@ -70,7 +70,7 @@ def test_cudagraph(tmp_path: pathlib.Path):
     stream = torch.cuda.Stream()
     torch.cuda.set_stream(stream)
 
-    @triton.jit
+    @triton_metal.jit
     def foo(x, y, z):
         tl.store(z, tl.load(y) + tl.load(x))
 
@@ -122,7 +122,7 @@ def test_cudagraph(tmp_path: pathlib.Path):
 
 def test_metrics(tmp_path: pathlib.Path):
 
-    @triton.jit
+    @triton_metal.jit
     def foo(x, y):
         tl.store(y, tl.load(x))
 
@@ -187,7 +187,7 @@ def test_hook(tmp_path: pathlib.Path):
         num_ctas = metadata.num_ctas
         return {"name": f"foo_test_{num_ctas}ctas_{size}elems", key: 1.0}
 
-    @triton.jit(launch_metadata=metadata_fn)
+    @triton_metal.jit(launch_metadata=metadata_fn)
     def foo(x, size: tl.constexpr, y):
         offs = tl.arange(0, size)
         tl.store(y + offs, tl.load(x + offs))
@@ -216,7 +216,7 @@ def test_hook_gpu_kernel(tmp_path: pathlib.Path, context: str):
         # A gpu kernel, but it should be under the metadata state
         return {"name": "foo_test", "bytes": x.sum().item()}
 
-    @triton.jit(launch_metadata=metadata_fn)
+    @triton_metal.jit(launch_metadata=metadata_fn)
     def foo(x, size: tl.constexpr, y):
         offs = tl.arange(0, size)
         tl.store(y + offs, tl.load(x + offs))
@@ -249,7 +249,7 @@ def test_pcsampling(tmp_path: pathlib.Path):
     if os.environ.get("PROTON_SKIP_PC_SAMPLING_TEST", "0") == "1":
         pytest.skip("PC sampling test is disabled")
 
-    @triton.jit
+    @triton_metal.jit
     def foo(x, y, size: tl.constexpr):
         offs = tl.arange(0, size)
         for _ in range(1000):

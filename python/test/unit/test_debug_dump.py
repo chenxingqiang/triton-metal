@@ -2,8 +2,8 @@ import os
 from contextlib import contextmanager
 
 import torch
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 
 
 @contextmanager
@@ -19,9 +19,9 @@ def test_fn_dump(capfd, device, fresh_triton_cache):
     N = 1024
     src = torch.zeros(N, device=device)
 
-    grid = lambda META: (triton.cdiv(N, META["BLOCK_SIZE"]), )
+    grid = lambda META: (triton_metal.cdiv(N, META["BLOCK_SIZE"]), )
 
-    @triton.jit
+    @triton_metal.jit
     def _kernel(src, N, BLOCK_SIZE: tl.constexpr):
         offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
         x = tl.load(src + offsets, mask=offsets < N) + 1

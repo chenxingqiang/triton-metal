@@ -23,19 +23,19 @@ In doing so, you will learn about:
 
 import torch
 
-import triton
-import triton.language as tl
-from triton.runtime import driver
+import triton_metal
+import triton_metal.language as tl
+from triton_metal.runtime import driver
 
-DEVICE = triton.runtime.driver.active.get_active_torch_device()
+DEVICE = triton_metal.runtime.driver.active.get_active_torch_device()
 
 
 def is_hip():
-    return triton.runtime.driver.active.get_current_target().backend == "hip"
+    return triton_metal.runtime.driver.active.get_current_target().backend == "hip"
 
 
 def is_cdna():
-    return is_hip() and triton.runtime.driver.active.get_current_target().arch in ('gfx940', 'gfx941', 'gfx942',
+    return is_hip() and triton_metal.runtime.driver.active.get_current_target().arch in ('gfx940', 'gfx941', 'gfx942',
                                                                                    'gfx90a', 'gfx908')
 
 
@@ -81,7 +81,7 @@ def naive_softmax(x):
 # memory operations properly if we want to handle any possible input shapes:
 
 
-@triton.jit
+@triton_metal.jit
 def softmax_kernel(output_ptr, input_ptr, input_row_stride, output_row_stride, n_rows, n_cols, BLOCK_SIZE: tl.constexpr,
                    num_stages: tl.constexpr):
     # starting row of the program
@@ -117,7 +117,7 @@ NUM_SM = properties["multiprocessor_count"]
 NUM_REGS = properties["max_num_regs"]
 SIZE_SMEM = properties["max_shared_mem"]
 WARP_SIZE = properties["warpSize"]
-target = triton.runtime.driver.active.get_current_target()
+target = triton_metal.runtime.driver.active.get_current_target()
 kernels = {}
 
 
@@ -125,7 +125,7 @@ def softmax(x):
     n_rows, n_cols = x.shape
 
     # The block size of each loop iteration is the smallest power of two greater than the number of columns in `x`
-    BLOCK_SIZE = triton.next_power_of_2(n_cols)
+    BLOCK_SIZE = triton_metal.next_power_of_2(n_cols)
 
     # Another trick we can use is to ask the compiler to use more threads per row by
     # increasing the number of warps (`num_warps`) over which each row is distributed.
@@ -199,8 +199,8 @@ assert torch.allclose(y_triton, y_torch), (y_triton, y_torch)
 # We will then compare its performance against (1) :code:`torch.softmax` and (2) the :code:`naive_softmax` defined above.
 
 
-@triton.testing.perf_report(
-    triton.testing.Benchmark(
+@triton_metal.testing.perf_report(
+    triton_metal.testing.Benchmark(
         x_names=['N'],  # argument names to use as an x-axis for the plot
         x_vals=[128 * i for i in range(2, 100)],  # different possible values for `x_name`
         line_arg='provider',  # argument name whose value corresponds to a different line in the plot
@@ -219,9 +219,9 @@ def benchmark(M, N, provider):
     stream = getattr(torch, DEVICE.type).Stream()
     getattr(torch, DEVICE.type).set_stream(stream)
     if provider == 'torch':
-        ms = triton.testing.do_bench(lambda: torch.softmax(x, axis=-1))
+        ms = triton_metal.testing.do_bench(lambda: torch.softmax(x, axis=-1))
     if provider == 'triton':
-        ms = triton.testing.do_bench(lambda: softmax(x))
+        ms = triton_metal.testing.do_bench(lambda: softmax(x))
     gbps = lambda ms: 2 * x.numel() * x.element_size() * 1e-9 / (ms * 1e-3)
     return gbps(ms)
 

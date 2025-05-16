@@ -1,5 +1,5 @@
-from triton.language import core as tl
-from triton.language.core import builtin
+from triton_metal.language import core as tl
+from triton_metal.language.core import builtin
 import warnings
 
 

@@ -11,12 +11,12 @@ For PTX reference on programmatic dependent launch see https://docs.nvidia.com/c
 """
 
 import torch
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 
 
 def is_cuda():
-    return triton.runtime.driver.active.get_current_target().backend == "cuda"
+    return triton_metal.runtime.driver.active.get_current_target().backend == "cuda"
 
 
 def supports_pdl():
@@ -24,7 +24,7 @@ def supports_pdl():
 
 
 # In this example
-@triton.jit
+@triton_metal.jit
 def add_kernel(x_ptr,  #
                y_ptr,  #
                output_ptr,  #
@@ -59,7 +59,7 @@ def add(x: torch.Tensor, y: torch.Tensor, launch_pdl: bool = True):
     output = torch.empty_like(x)
     assert x.device == y.device and output.device == x.device
     n_elements = output.numel()
-    grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']), )
+    grid = lambda meta: (triton_metal.cdiv(n_elements, meta['BLOCK_SIZE']), )
     add_kernel[grid](
         x, y, output, n_elements, BLOCK_SIZE=1024,
         USE_GDC=launch_pdl,  # set constexpr in kernel to use grid dependence control
@@ -80,8 +80,8 @@ def validate(n_elements):
     print(f"add: {torch_vs_add}")
 
 
-@triton.testing.perf_report(
-    triton.testing.Benchmark(
+@triton_metal.testing.perf_report(
+    triton_metal.testing.Benchmark(
         x_names=["size"],
         x_vals=[2**i for i in range(23, 28, 1)],
         x_log=False,
@@ -101,7 +101,7 @@ def benchmark(size, provider):
 
     fn = lambda: add(x, y, "pdl" in provider)
 
-    ms, min_ms, max_ms = triton.testing.do_bench_cudagraph(fn, quantiles=quantiles, rep=100)
+    ms, min_ms, max_ms = triton_metal.testing.do_bench_cudagraph(fn, quantiles=quantiles, rep=100)
 
     gbps = lambda ms: 3 * x.numel() * x.element_size() * 1e-9 / (ms * 1e-3)
     return gbps(ms), gbps(max_ms), gbps(min_ms)

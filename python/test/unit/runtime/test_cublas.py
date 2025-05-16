@@ -1,6 +1,6 @@
 import pytest
 import torch
-from triton._internal_testing import is_cuda
+from triton_metal._internal_testing import is_cuda
 
 
 @pytest.mark.parametrize("m, n, k", [(16, 16, 16), (32, 16, 16), (16, 32, 16), (16, 16, 32)])
@@ -12,7 +12,7 @@ def test_cublas(m, n, k, dtype_str, device):
     if dtype == torch.float8_e4m3fn and torch.cuda.get_device_capability()[0] < 9:
         pytest.skip("fp8 is only supported on CUDA with cc >= 90")
 
-    from triton._C.libtriton import nvidia
+    from triton_metal._C.libtriton import nvidia
 
     torch.manual_seed(123)
     workspace_size = 32 * 1024 * 1024

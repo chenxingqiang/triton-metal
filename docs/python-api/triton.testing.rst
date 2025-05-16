@@ -1,7 +1,7 @@
-triton.testing
+triton_metal.testing
 ==============
 
-.. currentmodule:: triton.testing
+.. currentmodule:: triton_metal.testing
 
 .. autosummary::
     :toctree: generated

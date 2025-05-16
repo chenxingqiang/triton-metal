@@ -15,7 +15,7 @@ if current_dir not in sys.path:
     sys.path.insert(0, current_dir)
 
 # Import the module to test
-from memory_layout_optimizer import (
+from MLX.memory_layout_optimizer import (
     MemoryLayoutOptimizer, 
     LayoutOptimizationLevel,
     MatrixLayoutPattern,
@@ -30,7 +30,7 @@ from memory_layout_optimizer import (
 
 # Mock hardware capabilities if needed
 try:
-    from metal_hardware_optimizer import AppleSiliconGeneration
+    from MLX.metal_hardware_optimizer import AppleSiliconGeneration
 except ImportError:
     # Create mock enum
     class DummyEnum(Enum):

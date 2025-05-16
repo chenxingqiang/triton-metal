@@ -22,11 +22,11 @@
 import pytest
 import torch
 
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 
 
-@triton.jit
+@triton_metal.jit
 def gemm_fusion_kernel(A, B, C, E,  #
                        M, N, K,  #
                        stride_am, stride_ak, stride_bn, stride_bk, stride_cn, stride_ck, stride_em, stride_ek,  #
@@ -57,7 +57,7 @@ def gemm_fusion_kernel(A, B, C, E,  #
     tl.store(e_tile_ptr, acc_e)
 
 
-#TODO: blackwell mma pipeline regressed with https://github.com/openai/triton-private-blackwell/commit/5cc42002bc36fb94385481ed4dab178a143733be
+#TODO: blackwell mma pipeline regressed with https://github.com/chenxingqiang/triton-metal-private-blackwell/commit/5cc42002bc36fb94385481ed4dab178a143733be
 @pytest.mark.skipif(torch.cuda.get_device_capability()[0] != 9, reason="only works on hopper")
 def test_gemm_fusion():
     M, N, K = 4096, 4096, 64
@@ -68,7 +68,7 @@ def test_gemm_fusion():
     E = torch.empty((M, K), dtype=torch.float16, device='cuda')
     ref_out = torch.matmul(torch.matmul(A, B.T), C)
     num_warps = 4
-    grid = (triton.cdiv(M, BLOCK_M), 1)
+    grid = (triton_metal.cdiv(M, BLOCK_M), 1)
     gemm_fusion_kernel[grid](
         A, B, C, E, M, N, K,  #
         A.stride(0), A.stride(1),  #
@@ -81,7 +81,7 @@ def test_gemm_fusion():
     torch.testing.assert_close(ref_out, E, atol=1e-2, rtol=1e-3)
 
 
-@triton.jit
+@triton_metal.jit
 def batched_gemm_fusion(Q, K, V, Out,  #
                         stride_qz, stride_qh, stride_qm, stride_qk,  #
                         stride_kz, stride_kh, stride_kn, stride_kk,  #
@@ -163,7 +163,7 @@ def test_batched_gemm_fusion():
     BT = B.transpose(-1, -2)
     ref_out = torch.matmul(torch.matmul(A, BT), C)
     num_warps = 4
-    grid = (triton.cdiv(N_CTX, BLOCK_M), B * NH)
+    grid = (triton_metal.cdiv(N_CTX, BLOCK_M), B * NH)
     batched_gemm_fusion[grid](
         A, B, C, E,  #
         A.stride(0), A.stride(1), A.stride(2), A.stride(3),  #

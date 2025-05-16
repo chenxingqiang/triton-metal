@@ -4,10 +4,10 @@
 import numpy as np
 import torch
 import pytest
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 
-from triton._internal_testing import is_cuda, is_hip, is_hip_cdna3, is_hip_cdna4
+from triton_metal._internal_testing import is_cuda, is_hip, is_hip_cdna3, is_hip_cdna4
 
 
 def matching_int(dtype):
@@ -22,7 +22,7 @@ def matching_int(dtype):
     else:
         raise ValueError('unsupported number of bits')
 
-@triton.jit
+@triton_metal.jit
 def type_convert_triton(src, dst, rounding : tl.constexpr, BLOCK_SIZE : tl.constexpr):
 
     idxs = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
@@ -35,11 +35,11 @@ def type_convert_triton(src, dst, rounding : tl.constexpr, BLOCK_SIZE : tl.const
 def launch_type_convert_triton(src, src_dtype, dst_dtype, device, rounding=None, BLOCK_SIZE=4096):
 
     dst = torch.empty(src.shape, dtype=matching_int(dst_dtype), device=device)
-    type_convert_triton[(src.shape[0] // BLOCK_SIZE,)](triton.reinterpret(src, src_dtype), triton.reinterpret(dst, dst_dtype), rounding, BLOCK_SIZE)
+    type_convert_triton[(src.shape[0] // BLOCK_SIZE,)](triton_metal.reinterpret(src, src_dtype), triton_metal.reinterpret(dst, dst_dtype), rounding, BLOCK_SIZE)
     return dst
 
 
-@triton.jit
+@triton_metal.jit
 def exhaustive_populate(dst, offset, BLOCK_SIZE : tl.constexpr, force_odd : tl.constexpr, output_bits : tl.constexpr, max_repr : tl.constexpr):
 
     idxs = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
@@ -78,7 +78,7 @@ def launch_exhaustive_populate(dst_dtype, offset, numel, force_odd, output_bits,
 
     assert(numel % BLOCK_SIZE == 0)
     dst = torch.empty((numel,), dtype=matching_int(dst_dtype), device=device)
-    exhaustive_populate[(numel // BLOCK_SIZE,)](triton.reinterpret(dst, dst_dtype), offset, BLOCK_SIZE, force_odd, output_bits, max_repr)
+    exhaustive_populate[(numel // BLOCK_SIZE,)](triton_metal.reinterpret(dst, dst_dtype), offset, BLOCK_SIZE, force_odd, output_bits, max_repr)
     # 0x80 in float8e4b8 or float8e5b16 represents inf/nan. We don't need to have that
     # as input to the conversion kernels.
     if dst_dtype == tl.float8e4b8 or dst_dtype == tl.float8e5b16:
@@ -86,7 +86,7 @@ def launch_exhaustive_populate(dst_dtype, offset, numel, force_odd, output_bits,
     return dst
 
 
-@triton.jit
+@triton_metal.jit
 def arbitrary_fp32_downcast(x, rounding : tl.constexpr, exponent_bits : tl.constexpr, mantissa_bits : tl.constexpr, exponent_bias : tl.constexpr):
 
     tl.static_assert(x.dtype == tl.float32, "input must be float32")
@@ -141,7 +141,7 @@ def arbitrary_fp32_downcast(x, rounding : tl.constexpr, exponent_bits : tl.const
     return y
 
 
-@triton.jit
+@triton_metal.jit
 def downcast_emulated(src, dst, rounding : tl.constexpr, BLOCK_SIZE : tl.constexpr, exponent_bits : tl.constexpr, mantissa_bits : tl.constexpr, exponent_bias : tl.constexpr):
 
     tl.static_assert(src.dtype.element_ty == tl.float32, "src dtype must be float32")
@@ -157,7 +157,7 @@ def launch_downcast_emulated(src, src_dtype, dst_dtype, rounding, exponent_bits,
 
     dst = torch.empty(src.shape, dtype=matching_int(dst_dtype), device=device)
     downcast_emulated[(src.shape[0] // BLOCK_SIZE,)](
-        triton.reinterpret(src, src_dtype), triton.reinterpret(dst, dst_dtype), rounding, BLOCK_SIZE, exponent_bits, mantissa_bits, exponent_bias)
+        triton_metal.reinterpret(src, src_dtype), triton_metal.reinterpret(dst, dst_dtype), rounding, BLOCK_SIZE, exponent_bits, mantissa_bits, exponent_bias)
     # 0x80 in float8e4b8 or float8e5b16 represents inf/nan. downcast_emulated kernel will
     # convert -0. in higher precision to 0x80 and thus need to fix the result to 0.
     if dst_dtype == tl.float8e4b8 or dst_dtype == tl.float8e5b16:
@@ -165,7 +165,7 @@ def launch_downcast_emulated(src, src_dtype, dst_dtype, rounding, exponent_bits,
     return dst
 
 
-@triton.jit
+@triton_metal.jit
 def upcast_emulated(src, dst, BLOCK_SIZE : tl.constexpr, exponent_bits : tl.constexpr, mantissa_bits : tl.constexpr, exponent_bias : tl.constexpr):
 
     exponent_compensator : tl.constexpr = 2.0 ** (127 - exponent_bias)
@@ -202,7 +202,7 @@ def upcast_emulated(src, dst, BLOCK_SIZE : tl.constexpr, exponent_bits : tl.cons
 def launch_upcast_emulated(src, exponent_bits, mantissa_bits, exponent_bias, device, BLOCK_SIZE=4096):
 
     dst = torch.empty(src.shape, dtype=torch.int32, device=device)
-    upcast_emulated[(src.shape[0] // BLOCK_SIZE,)](src, triton.reinterpret(dst, tl.float32), BLOCK_SIZE, exponent_bits, mantissa_bits, exponent_bias)
+    upcast_emulated[(src.shape[0] // BLOCK_SIZE,)](src, triton_metal.reinterpret(dst, tl.float32), BLOCK_SIZE, exponent_bits, mantissa_bits, exponent_bias)
     return dst
 
 
@@ -278,7 +278,7 @@ def test_typeconvert_upcast(src_dtype, dst_dtype, device):
         if ((src_dtype == 'float8e4nv' and torch.cuda.get_device_capability(0) < (8, 9))
             or src_dtype in ('float8e4b8', 'float8e5b16')):
             # If the dtype should error out in the given device, we assert that and return
-            with pytest.raises(triton.CompilationError, match="not supported in this architecture"):
+            with pytest.raises(triton_metal.CompilationError, match="not supported in this architecture"):
                 launch_exhaustive_populate(getattr(tl, src_dtype), 0, 65536, False, 8, 0x7f, device=device)
             return
     elif is_hip():
@@ -287,7 +287,7 @@ def test_typeconvert_upcast(src_dtype, dst_dtype, device):
         if  (src_dtype in ('float8e4b15') or
             (src_dtype in ('float8e4b8', 'float8e5b16') and not is_hip_cdna3())):
             # If the dtype should error out in the given device, we assert that and return
-            with pytest.raises(triton.CompilationError, match="not supported in this architecture"):
+            with pytest.raises(triton_metal.CompilationError, match="not supported in this architecture"):
                 launch_exhaustive_populate(getattr(tl, src_dtype), 0, 65536, False, 8, 0x7f, device=device)
             return
 

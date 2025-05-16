@@ -2,13 +2,13 @@ import itertools
 import pytest
 import torch
 
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 
 
 def test_pre_call_hooks(device):
 
-    @triton.jit
+    @triton_metal.jit
     def add_kernel(
         in_ptr0,
         in_ptr1,

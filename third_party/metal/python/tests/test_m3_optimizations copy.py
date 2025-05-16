@@ -10,11 +10,6 @@ import os
 import sys
 import time
 import argparse
-import numpy as np
-from typing import Dict, List, Tuple, Optional, Any, Set
-
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 try:
     import mlx.core as mx
@@ -26,10 +21,10 @@ except ImportError:
 
 # Try to import required modules for testing
 try:
-    from metal_hardware_optimizer import hardware_capabilities, AppleSiliconGeneration
-    from m3_graph_optimizer import get_m3_graph_optimizer
-    from m3_memory_manager import M3MemoryManager
-    import m3_fusion_optimizer
+    from MLX.metal_hardware_optimizer import hardware_capabilities, AppleSiliconGeneration
+    from M3.m3_graph_optimizer import get_m3_graph_optimizer
+    from M3.m3_memory_manager import M3MemoryManager
+    import M3.m3_fusion_optimizer
     HAS_M3_MODULES = True
 except ImportError:
     HAS_M3_MODULES = False
@@ -46,8 +41,8 @@ if not IS_M3:
 
 # Import Triton for testing
 try:
-    import triton
-    import triton.language as tl
+    import triton_metal as triton
+    import triton_metal.language as tl
     HAS_TRITON = True
 except ImportError:
     HAS_TRITON = False
@@ -118,7 +113,7 @@ def test_m3_fusion_patterns():
     print("Testing M3 fusion pattern recognition...")
     
     # Get M3 fusion optimizer
-    m3_fusion_opt = m3_fusion_optimizer.get_m3_fusion_optimizer()
+    m3_fusion_opt = M3.m3_fusion_optimizer.get_m3_fusion_optimizer()
     assert m3_fusion_opt is not None, "M3FusionOptimizer not available"
     
     # Create test operations that should match the SwiGLU pattern
@@ -148,7 +143,7 @@ def test_m3_fusion_patterns():
     return True
 
 
-@triton.jit
+@triton_metal.jit
 def matmul_kernel(
     a_ptr, b_ptr, c_ptr, 
     M, N, K,

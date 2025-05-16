@@ -1,6 +1,6 @@
 from enum import Enum
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 import torch
 import torch.nn.functional as F
 
@@ -27,7 +27,7 @@ def get_scaled_dot_format_string(dtype: tl.dtype):
     return mapping[dtype]
 
 
-@triton.jit
+@triton_metal.jit
 def _get_max_quant_val(dtype: tl.constexpr):
     if dtype == tl.uint8:
         return 6.0
@@ -40,7 +40,7 @@ def _get_max_quant_val(dtype: tl.constexpr):
 
 
 # fmt: off
-@triton.jit
+@triton_metal.jit
 def _compute_quant_and_scale(src_tensor, valid_src_mask, mx_tensor_dtype: tl.constexpr,
                              DEQUANT_SCALE_ROUNDING_MODE: tl.constexpr = 0):
     is_fp8: tl.constexpr = mx_tensor_dtype == tl.float8e4nv or mx_tensor_dtype == tl.float8e5
@@ -111,7 +111,7 @@ def _compute_quant_and_scale(src_tensor, valid_src_mask, mx_tensor_dtype: tl.con
 
     return out_tensor, dequant_scale_exponent
 
-@triton.jit
+@triton_metal.jit
 def _downcast_to_mxfp(mx_tensor_ptr, stride_mxt_outer, stride_mxt_quant: tl.constexpr,
                       mx_scale_ptr, stride_mx_scale_outer, stride_mx_scale_quant,
                       src_ptr, stride_src_outer, stride_src_quant,
@@ -175,7 +175,7 @@ def _downcast_to_mxfp(mx_tensor_ptr, stride_mxt_outer, stride_mxt_quant: tl.cons
     tl.store(mx_tensor_ptr + mx_tensor_offsets, out_tensor, mask=full_mask_mxt)
 
 
-@triton.jit
+@triton_metal.jit
 def _upcast_from_mxfp(out_ptr, stride_o_outer, stride_o_quant: tl.constexpr,
                       mx_scale_ptr, stride_scale_outer, stride_scale_quant,
                       mx_tensor_ptr, stride_tensor_outer, stride_tensor_quant: tl.constexpr,
@@ -300,7 +300,7 @@ SWIZZLE_ALIGN_INNER = 8
 SWIZZLE_SIZE_INNER = 4
 SWIZZLE_SIZE_OUTER = 128
 
-@triton.jit
+@triton_metal.jit
 def _unswizzle_mx_block(x,
                         SIZE_OUTER: tl.constexpr = SWIZZLE_SIZE_OUTER,
                         SIZE_INNER: tl.constexpr = SWIZZLE_SIZE_INNER,
@@ -378,8 +378,8 @@ def downcast_to_mxfp(src_tensor: torch.Tensor, out_quant_type: torch.dtype, axis
     divisor = 1 if is_fp8 else 2
     device = src_tensor.device
 
-    packed_quant_dim = triton.cdiv(L, divisor)
-    out_scale_dim = triton.cdiv(L, 32)
+    packed_quant_dim = triton_metal.cdiv(L, divisor)
+    out_scale_dim = triton_metal.cdiv(L, 32)
 
     permute_order, scale_permute_order, convert_order = axis_permute_order(ndim, axis, swizzle_axis)
 
@@ -401,15 +401,15 @@ def downcast_to_mxfp(src_tensor: torch.Tensor, out_quant_type: torch.dtype, axis
         allocation_shape = prmted_scale_shape
         if swizzle_axis is not None:
             allocation_shape = list(prmted_scale_shape)
-            allocation_shape[-1] = triton.cdiv(allocation_shape[-1], SWIZZLE_ALIGN_INNER) * SWIZZLE_ALIGN_INNER
-            allocation_shape[-2] = triton.cdiv(allocation_shape[-2], SWIZZLE_SIZE_OUTER) * SWIZZLE_SIZE_OUTER
+            allocation_shape[-1] = triton_metal.cdiv(allocation_shape[-1], SWIZZLE_ALIGN_INNER) * SWIZZLE_ALIGN_INNER
+            allocation_shape[-2] = triton_metal.cdiv(allocation_shape[-2], SWIZZLE_SIZE_OUTER) * SWIZZLE_SIZE_OUTER
         out_scale = torch.empty(allocation_shape, dtype=torch.uint8, device=device)
     else:
         if swizzle_axis is not None:
             expected_scale_shape = list(prmted_scale_shape)
             # Pad then unpermute the expected shape
-            expected_scale_shape[-1] = triton.cdiv(expected_scale_shape[-1], SWIZZLE_ALIGN_INNER) * SWIZZLE_ALIGN_INNER
-            expected_scale_shape[-2] = triton.cdiv(expected_scale_shape[-2], SWIZZLE_SIZE_OUTER) * SWIZZLE_SIZE_OUTER
+            expected_scale_shape[-1] = triton_metal.cdiv(expected_scale_shape[-1], SWIZZLE_ALIGN_INNER) * SWIZZLE_ALIGN_INNER
+            expected_scale_shape[-2] = triton_metal.cdiv(expected_scale_shape[-2], SWIZZLE_SIZE_OUTER) * SWIZZLE_SIZE_OUTER
             expected_scale_shape = permute_shape(expected_scale_shape, scale_permute_order)
         else:
             expected_scale_shape = permute_shape(prmted_scale_shape, scale_permute_order)
@@ -428,8 +428,8 @@ def downcast_to_mxfp(src_tensor: torch.Tensor, out_quant_type: torch.dtype, axis
 
     # Flatten input tensor for kernel. This will typically make a copy
     reshaped_src_tensor = prmted_src_tensor.reshape(-1, L)
-    blocks_quant_dim = triton.cdiv(reshaped_src_tensor.shape[-1], BLOCK_QUANT_DIM)
-    blocks_out_dim = triton.cdiv(reshaped_src_tensor.shape[0], BLOCK_OUT_DIM)
+    blocks_quant_dim = triton_metal.cdiv(reshaped_src_tensor.shape[-1], BLOCK_QUANT_DIM)
+    blocks_out_dim = triton_metal.cdiv(reshaped_src_tensor.shape[0], BLOCK_OUT_DIM)
 
     # Flatten the output tensors for the kernel, this should be a view always
     kernel_quant_tensor = out_quant_tensor.reshape(-1, packed_quant_dim)
@@ -491,7 +491,7 @@ def upcast_from_mxfp(tensor: torch.Tensor, scale: torch.Tensor, dtype: torch.dty
     assert tensor.ndim == scale.ndim, (f"Weight and scale must have the same number of dimensions. "
                                        f"Got {tensor.ndim=} and {scale.ndim=}")
     quant_dim_align = SWIZZLE_ALIGN_INNER if swizzle_axis is not None else 1
-    assert triton.cdiv(triton.cdiv(logical_quant_dim_shape, 32), quant_dim_align) * quant_dim_align == scale.shape[axis], \
+    assert triton_metal.cdiv(triton_metal.cdiv(logical_quant_dim_shape, 32), quant_dim_align) * quant_dim_align == scale.shape[axis], \
         f"Tensor and scale mismatch along quantization axis. Got {tensor.shape[axis]=} and {scale.shape[axis]=}"
     assert tensor.dtype in {torch.uint8, torch.float8_e5m2, torch.float8_e4m3fn}, \
         f"Invalid tensor dtype {tensor.dtype=}"
@@ -508,7 +508,7 @@ def upcast_from_mxfp(tensor: torch.Tensor, scale: torch.Tensor, dtype: torch.dty
     if swizzle_axis is not None:
         prmt_scale = unswizzle_mx(prmt_scale)
 
-        unpadded_scale_shape = (*prmt_tensor.shape[:-1], triton.cdiv(logical_quant_dim_shape, 32))
+        unpadded_scale_shape = (*prmt_tensor.shape[:-1], triton_metal.cdiv(logical_quant_dim_shape, 32))
         # The kernel expects scales in `permute_order`, not `scale_permute_order`. Transpose if needed.
         if convert_order:
             prmt_scale = prmt_scale.transpose(*convert_order)
@@ -523,8 +523,8 @@ def upcast_from_mxfp(tensor: torch.Tensor, scale: torch.Tensor, dtype: torch.dty
     reshaped_scale = prmt_scale.reshape(-1, prmt_scale.shape[-1])
 
     outer_dim = reshaped_tensor.shape[0]
-    blocks_out_dim = triton.cdiv(outer_dim, BLOCK_OUT_DIM)
-    blocks_quant_dim = triton.cdiv(logical_quant_dim_shape, BLOCK_QUANT_DIM)
+    blocks_out_dim = triton_metal.cdiv(outer_dim, BLOCK_OUT_DIM)
+    blocks_quant_dim = triton_metal.cdiv(logical_quant_dim_shape, BLOCK_QUANT_DIM)
 
     out = torch.empty((outer_dim, logical_quant_dim_shape), dtype=dtype, device=tensor.device)
     _upcast_from_mxfp[(blocks_out_dim, blocks_quant_dim)](

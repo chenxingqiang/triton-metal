@@ -11,8 +11,8 @@ triton_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os
 sys.path.insert(0, os.path.join(triton_path, "python"))
 
 # Import Triton
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 
 # Import MLX
 try:
@@ -26,7 +26,7 @@ except ImportError:
 from triton_to_metal_converter import TritonToMLXConverter
 
 # Define a simple Triton kernel
-@triton.jit
+@triton_metal.jit
 def add_kernel(
     x_ptr, y_ptr, output_ptr,
     n_elements,
@@ -53,7 +53,7 @@ def main():
     """Main function"""
     # Print information about the environment
     print(f"MLX available: {MLX_AVAILABLE}")
-    print(f"Triton version: {triton.__version__}")
+    print(f"Triton version: {triton_metal.__version__}")
     
     # Initialize data
     n_elements = 1024
@@ -66,10 +66,10 @@ def main():
         y_mlx = mx.array(y)
         
         # Compute with MLX directly
-        start_time = triton.testing.perf_counter()
+        start_time = triton_metal.testing.perf_counter()
         output_mlx = x_mlx + y_mlx
         mx.eval(output_mlx)  # Force evaluation
-        mlx_time = triton.testing.perf_counter() - start_time
+        mlx_time = triton_metal.testing.perf_counter() - start_time
         
         print(f"MLX direct computation time: {mlx_time:.6f} seconds")
     
@@ -79,14 +79,14 @@ def main():
     output_triton = np.zeros_like(x_triton)
     
     # Compute with Triton kernel
-    start_time = triton.testing.perf_counter()
-    grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
+    start_time = triton_metal.testing.perf_counter()
+    grid = lambda meta: (triton_metal.cdiv(n_elements, meta['BLOCK_SIZE']),)
     add_kernel[grid](
         x_triton, y_triton, output_triton,
         n_elements,
         BLOCK_SIZE=128,
     )
-    triton_time = triton.testing.perf_counter() - start_time
+    triton_time = triton_metal.testing.perf_counter() - start_time
     
     print(f"Triton kernel computation time: {triton_time:.6f} seconds")
     
@@ -126,9 +126,9 @@ def main():
         ]
         
         # Convert operations
-        start_time = triton.testing.perf_counter()
+        start_time = triton_metal.testing.perf_counter()
         results = converter.convert_operations(ops)
-        converter_time = triton.testing.perf_counter() - start_time
+        converter_time = triton_metal.testing.perf_counter() - start_time
         
         print(f"TritonToMLXConverter computation time: {converter_time:.6f} seconds")
         

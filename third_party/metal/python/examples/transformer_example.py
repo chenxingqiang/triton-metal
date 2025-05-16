@@ -27,8 +27,8 @@ except ImportError:
 
 # Try to import Triton
 try:
-    import triton
-    import triton.language as tl
+    import triton_metal
+    import triton_metal.language as tl
 except ImportError:
     print("Triton not found. Please install it with 'pip install triton'")
     sys.exit(1)
@@ -41,7 +41,7 @@ from m3_optimizations import m3_optimizer
 os.environ["TRITON_BACKEND"] = "metal"
 
 # Define attention kernel
-@triton.jit
+@triton_metal.jit
 def attention_kernel(
     q_ptr, k_ptr, v_ptr, output_ptr,
     batch, seqlen, n_heads, d_head,
@@ -341,7 +341,7 @@ def benchmark_attention():
 if __name__ == "__main__":
     print(f"Apple {hardware_capabilities.chip_generation.name} detected")
     print(f"MLX version: {mx.__version__}")
-    print(f"Triton version: {triton.__version__}")
+    print(f"Triton version: {triton_metal.__version__}")
     
     # Test attention implementation
     test_attention()

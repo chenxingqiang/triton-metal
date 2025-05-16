@@ -27,12 +27,12 @@ import pytest
 import torch
 from torch.testing import assert_close
 
-import triton
-import triton.language as tl
-from triton._internal_testing import is_hip
+import triton_metal
+import triton_metal.language as tl
+from triton_metal._internal_testing import is_hip
 
 
-@triton.jit
+@triton_metal.jit
 def matmul_no_scf_kernel(a_ptr, b_ptr, c_ptr,  #
                          M, N, K,  #
                          stride_am, stride_ak,  #
@@ -137,7 +137,7 @@ def test_gemm_no_scf(M, N, K, NUM_CTAS, NUM_WARPS, TRANS_A, TRANS_B, OUTPUT_TYPE
     assert_close(c, golden, rtol=1e-2, atol=1e-3, check_dtype=False)
 
 
-@triton.jit
+@triton_metal.jit
 def matmul_kernel(a_ptr, b_ptr, w_ptr, bias_ptr, z_ptr,  #
                   M, N, K,  #
                   stride_am, stride_ak,  #
@@ -416,7 +416,7 @@ def test_gemm(BLOCK_M, BLOCK_N, BLOCK_K, NUM_WARPS, NUM_CTAS, M, N, K, TRANS_A, 
     golden = process_epilogue(dot, bias, w, epilogue)
 
     def grid(META):
-        return (triton.cdiv(M, META['BLOCK_M']) * triton.cdiv(N, META['BLOCK_N']), )
+        return (triton_metal.cdiv(M, META['BLOCK_M']) * triton_metal.cdiv(N, META['BLOCK_N']), )
 
     pgm = matmul_kernel[grid](
         a_ptr=a, b_ptr=b, w_ptr=w, bias_ptr=bias, z_ptr=z,  #

@@ -1,99 +1,122 @@
 # Triton Metal Backend
 
-This directory contains the implementation of the Metal backend for Triton, targeting Apple Silicon GPUs (M1, M2, and M3).
-
-## Overview
-
-The Metal backend provides a high-performance implementation of Triton for Apple Silicon GPUs, with specific optimizations for the M3 architecture. The key features include:
-
-- **M3-specific optimizations**: Takes advantage of 64KB shared memory, 8-wide vectors, and enhanced tensor cores
-- **MLX integration**: Integration with Apple's MLX framework for accelerated array computing
-- **Hardware detection**: Automatic detection and optimization for different Apple Silicon generations
-- **Memory optimization**: Specialized memory layout and management for optimal performance
-- **Tensor core acceleration**: Leverages M3's dedicated tensor cores for matrix operations
-
-## Architecture
-
-The Metal backend follows a layered architecture:
-
-1. **TritonMetal Dialect**: MLIR dialect for Metal-specific operations and optimizations
-2. **Metal Backend**: Implementation of the Triton backend interface for Metal
-3. **Hardware-specific Optimizers**: Specialized optimizers for different Apple Silicon generations
-4. **MLX Integration**: Integration with MLX for accelerated array computing
-5. **Tensor Core Utilization**: Special paths for utilizing M3 tensor cores
-
-## Testing Framework
-
-The Metal backend includes a comprehensive testing framework:
-
-1. **Dialect-level Tests**: Tests for the Metal dialect operations and transformations
-2. **Backend-level Tests**: Tests for the Metal backend implementation
-3. **Integration Tests**: Tests for the integration with MLX
-4. **Hardware-specific Tests**: Tests targeting specific Apple Silicon generations
-5. **Tensor Core Tests**: Tests for M3 tensor core utilization
-
-For more details on the testing framework, see [TESTING.md](python/docs/TESTING.md).
-
-## M3 Optimizations
-
-The Metal backend includes several optimizations specific to the M3 chip:
-
-1. **Larger shared memory**: Utilizes 64KB shared memory for larger tiles and better data reuse
-2. **Wider vector operations**: Takes advantage of 8-wide vector operations for improved throughput
-3. **Tensor core support**: Uses enhanced tensor cores for matrix operations
-4. **Dynamic caching**: Leverages improved cache management for better performance
-
-### Tensor Core Acceleration
-
-The M3 chip includes dedicated tensor cores that can significantly accelerate matrix operations. The Metal backend includes specialized code paths to detect and utilize these tensor cores when available. Key features include:
-
-- Automatic detection of tensor core availability
-- Optimal matrix dimension selection for tensor core operations
-- Mixed precision support (FP16 computation with FP32 accumulation)
-- Automatic fallback to standard implementation when tensor cores aren't beneficial
-
-## Building and Running
-
-The Metal backend can be built as part of the Triton project. It requires:
-
-- macOS with Xcode 15.0 or later
-- Apple Silicon Mac (M1, M2, or M3)
-- CMake 3.20 or later
-
-To build:
-
-```bash
-mkdir build
-cd build
-cmake -DTRITON_ENABLE_METAL=ON ..
-make -j$(nproc)
-```
-
-To run the Metal tests:
-
-```bash
-cd build
-./run_metal_tests
-```
+This directory contains the Metal backend implementation for Triton, enabling Triton kernels to run on Apple Silicon GPUs (M1, M2, and M3 series).
 
 ## Directory Structure
 
+The Metal backend is organized as follows:
+
 ```
 third_party/metal/
-├── backend/                     # Metal backend implementation
-├── include/                     # Metal backend headers
-│   └── triton/                  # Triton interface headers
-├── language/                    # Metal language bindings
-│   └── metal/                   # Metal-specific language implementation
-├── python/                      # Python bindings for the Metal backend
-│   ├── benchmark/               # Benchmarking tools
-│   ├── docs/                    # Documentation
-│   ├── examples/                # Example kernels
-│   ├── tests/                   # Python tests
-│   └── tools/                   # Python tools
-└── README.md                    # This file
+├── backend/                # Metal backend implementation
+│   ├── include/            # Metal backend headers
+│   └── lib/                # Metal backend libraries
+├── include/                # Public Metal dialect headers
+│   └── triton/
+│       └── Dialect/
+│           └── TritonMetal/
+│               ├── IR/     # Metal IR definitions
+│               └── Transforms/ # Metal-specific transformations
+├── language/               # Metal language extension
+│   └── metal/              # Metal-specific functions and utilities
+├── lib/                    # Implementation of Metal dialect and transforms
+│   └── Dialect/
+│       └── TritonMetal/
+│           ├── IR/          # Metal IR implementation
+│           └── Transforms/  # Metal transform implementation
+└── python/                 # Python bindings for Metal backend
+    └── triton_metal/       # Metal-specific Python implementation
+        ├── __init__.py     # Package initialization
+        ├── compiler.py     # Metal compiler implementation
+        ├── runtime.py      # Metal runtime implementation
+        ├── check_system.py # System compatibility checker
+        └── tests/          # Metal backend tests
+```
+
+## Prerequisites
+
+- macOS 11.0 (Big Sur) or later
+- Apple Silicon Mac (M1, M2, or M3 series)
+- MLX (Apple's machine learning framework)
+
+## Installation
+
+The Metal backend is included as part of the Triton installation on Apple Silicon Macs. To install:
+
+```bash
+pip install triton
+```
+
+Or from source:
+
+```bash
+git clone https://github.com/openai/triton_metal.git
+cd triton
+python setup.py install
+```
+
+## Usage
+
+### Basic Usage
+
+To use the Metal backend, you need to specify the target when creating a Triton function:
+
+```python
+import triton_metal
+import triton_metal.language as tl
+
+@triton_metal.jit
+def add_kernel(x_ptr, y_ptr, output_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
+    pid = tl.program_id(0)
+    block_start = pid * BLOCK_SIZE
+    offsets = block_start + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    
+    x = tl.load(x_ptr + offsets, mask=mask)
+    y = tl.load(y_ptr + offsets, mask=mask)
+    output = x + y
+    
+    tl.store(output_ptr + offsets, output, mask=mask)
+
+# Use the Metal backend
+grid = (n_elements + 1024 - 1) // 1024
+add_kernel[grid](x_ptr, y_ptr, output_ptr, n_elements, 1024, target='metal')
+```
+
+### Metal-Specific Features
+
+The Metal backend includes several specific features for Apple Silicon GPUs:
+
+```python
+import triton_metal
+import triton_metal.language as tl
+from triton_metal.backends.metal import get_chip_generation, get_max_threads_per_threadgroup
+
+# Get Metal-specific information
+chip_gen = get_chip_generation()
+max_threads = get_max_threads_per_threadgroup()
+
+print(f"Running on {chip_gen} with {max_threads} max threads per threadgroup")
+```
+
+## Testing
+
+To run the Metal backend tests:
+
+```bash
+cd third_party/metal/python
+python -m unittest discover -s triton_metal/tests
 ```
 
 ## Contributing
 
-For details on how to contribute to the Metal backend, see [CONTRIBUTING.md](../CONTRIBUTING.md). 
+When contributing to the Metal backend, please ensure your changes follow these guidelines:
+
+1. Follow the existing code style and structure
+2. Add appropriate tests for new features
+3. Update documentation as needed
+4. Ensure compatibility with the latest macOS and Apple Silicon chips
+
+## License
+
+The Metal backend is part of the Triton project and is licensed under the same terms as Triton. 

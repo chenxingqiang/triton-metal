@@ -1,17 +1,17 @@
 import multiprocessing
 import shutil
 
-import triton
-import triton.language as tl
-from triton.compiler import ASTSource
+import triton_metal
+import triton_metal.language as tl
+from triton_metal.compiler import ASTSource
 
-target = triton.runtime.driver.active.get_current_target()
+target = triton_metal.runtime.driver.active.get_current_target()
 start_method = 'fork' if 'fork' in multiprocessing.get_all_start_methods() else 'spawn'
 
 
 def compile_fn():
 
-    @triton.jit
+    @triton_metal.jit
     def kernel_sub(a, b, o, N: tl.constexpr):
         idx = tl.arange(0, N)
         tl.store(o + idx, tl.load(a + idx) - tl.load(b + idx) * 777)
@@ -21,7 +21,7 @@ def compile_fn():
         constexprs={'N': 32},
         signature={'a': "*fp32", 'b': "*fp32", 'o': "*fp32", 'N': 'constexpr'},
     )
-    triton.compile(src=src, target=target)
+    triton_metal.compile(src=src, target=target)
 
 
 def test_compile_in_subproc() -> None:
@@ -34,7 +34,7 @@ def test_compile_in_subproc() -> None:
 
 def compile_fn_dot():
 
-    @triton.jit
+    @triton_metal.jit
     def kernel_dot(Z):
         offs = tl.arange(0, 16)[:, None] * 16 + tl.arange(0, 16)[None, :]
         z = tl.load(Z + offs)
@@ -42,7 +42,7 @@ def compile_fn_dot():
         tl.store(Z + offs, z)
 
     src = ASTSource(fn=kernel_dot, signature={'Z': "*fp32"})
-    triton.compile(src=src, target=target)
+    triton_metal.compile(src=src, target=target)
 
 
 def test_compile_in_forked_subproc(fresh_triton_cache) -> None:
@@ -55,14 +55,14 @@ def test_compile_in_forked_subproc(fresh_triton_cache) -> None:
 
 def compile_empty_kernel_with_gc():
 
-    @triton.jit
+    @triton_metal.jit
     def empty_kernel():
         pass
 
     import gc
     gc.collect()
     src = ASTSource(fn=empty_kernel, signature={})
-    triton.compile(src=src, target=target)
+    triton_metal.compile(src=src, target=target)
 
 
 def test_compile_in_forked_subproc_with_forced_gc(fresh_triton_cache) -> None:

@@ -1,4 +1,4 @@
-import triton
+import triton_metal
 import re
 
 
@@ -6,7 +6,7 @@ def test_triton_reproducer_path(monkeypatch, tmp_path):
     # If we get a cache hit there will be no reproducer generated
     monkeypatch.setenv("TRITON_ALWAYS_COMPILE", "1")
 
-    @triton.jit
+    @triton_metal.jit
     def triton_():
         return
 

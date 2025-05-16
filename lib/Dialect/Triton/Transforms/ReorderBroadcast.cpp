@@ -11,7 +11,7 @@
 #include "triton/Dialect/Triton/Transforms/Passes.h"
 
 // TODO(jlebar): Move this and all other generatede code into namespace
-// mlir::triton.
+// mlir::triton_metal.
 #define GEN_PASS_DEF_TRITONREORDERBROADCAST
 #include "triton/Dialect/Triton/Transforms/Passes.h.inc"
 

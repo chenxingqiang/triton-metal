@@ -45,11 +45,11 @@ There are three primary ways to use the interpreter:
 
   .. code-block:: python
 
-    import triton
-    import triton.language as tl
+    import triton_metal
+    import triton_metal.language as tl
     import pdb
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(x_ptr, y_ptr, BLOCK_SIZE: tl.constexpr):
       pdb.set_trace()
       offs = tl.arange(0, BLOCK_SIZE)

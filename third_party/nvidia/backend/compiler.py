@@ -1,7 +1,7 @@
-from triton.backends.compiler import BaseBackend, GPUTarget
-from triton._C.libtriton import ir, passes, llvm, nvidia
+from triton_metal.backends.compiler import BaseBackend, GPUTarget
+from triton_metal._C.libtriton import ir, passes, llvm, nvidia
 from triton import knobs
-from triton.runtime.errors import PTXASError
+from triton_metal.runtime.errors import PTXASError
 
 from dataclasses import dataclass
 import functools
@@ -187,7 +187,7 @@ class CUDABackend(BaseBackend):
         )
 
     def get_codegen_implementation(self, options):
-        import triton.language.extra.cuda as cuda
+        import triton_metal.language.extra.cuda as cuda
         capability = int(self._parse_arch(options.arch))
         codegen_fns = {
             "convert_custom_types":
@@ -197,8 +197,8 @@ class CUDABackend(BaseBackend):
         return codegen_fns
 
     def get_module_map(self) -> Dict[str, ModuleType]:
-        from triton.language.extra.cuda import libdevice
-        return {"triton.language.extra.libdevice": libdevice}
+        from triton_metal.language.extra.cuda import libdevice
+        return {"triton_metal.language.extra.libdevice": libdevice}
 
     def load_dialects(self, ctx):
         nvidia.load_dialects(ctx)

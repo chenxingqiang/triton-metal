@@ -1,11 +1,11 @@
 import pytest
 import torch
 
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 
-from triton.language.extra import libdevice
-from triton.language.extra.libdevice import fast_dividef as my_fast_dividef
+from triton_metal.language.extra import libdevice
+from triton_metal.language.extra.libdevice import fast_dividef as my_fast_dividef
 
 
 @pytest.mark.parametrize("dtype_str", ["float32", "float64"])
@@ -28,7 +28,7 @@ def test_bessel(dtype_str, libdevice_fn, torch_special_fn, device):
     y_exp = torch.empty((SIZE, ), dtype=dtype, device=device)
     y_ref = getattr(torch.special, torch_special_fn)(x)
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(in_p, out_p, fn: tl.constexpr, SIZE: tl.constexpr):
         off = tl.arange(0, SIZE)
         x = tl.load(in_p + off)
@@ -44,7 +44,7 @@ def test_libdevice_rename(device):
     # mark the import as used by this test
     _ = my_fast_dividef
 
-    @triton.jit
+    @triton_metal.jit
     def triton_copy(in_ptr, out_ptr, BLOCK_SIZE: tl.constexpr):
         offsets = tl.arange(0, BLOCK_SIZE)
         data = tl.load(in_ptr + offsets)

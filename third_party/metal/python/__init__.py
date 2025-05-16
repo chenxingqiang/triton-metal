@@ -28,9 +28,9 @@ if current_dir not in sys.path:
     sys.path.insert(0, current_dir)
 
 # Export public API
-from metal_hardware_optimizer import hardware_capabilities, AppleSiliconGeneration
-from operation_mapping import MLXDispatcher, OpCategory, op_conversion_registry
-from metal_fusion_optimizer import FusionOptimizer, fusion_optimizer
+from MLX.metal_hardware_optimizer import hardware_capabilities, AppleSiliconGeneration
+from mlx.operation_mapping import MLXDispatcher, OpCategory, op_conversion_registry
+from MLX.metal_fusion_optimizer import FusionOptimizer, fusion_optimizer
 
 __all__ = [
     "is_available",

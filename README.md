@@ -2,27 +2,67 @@
   <img src="https://lh5.googleusercontent.com/wzQKEsTFkrgNQO9JjhGH5wFvslJr1saLtLaJ_a6Fp_gNENpvt3VG7BmztwngU9hFJaU4CPwGiw1opQtDvTkLrxWRbO_a12Q-pdESWHgtmheIHcPbOL5ZMC4TSiJVe5ty1w=w3517" alt="Triton logo">
 </div>
 
-| **`Documentation`** | **`Nightly Wheels`** |
-|-------------------- | -------------------- |
-| [![Documentation](https://github.com/triton-lang/triton/actions/workflows/documentation.yml/badge.svg)](https://triton-lang.org/) | [![Wheels](https://github.com/triton-lang/triton/actions/workflows/wheels.yml/badge.svg)](https://github.com/triton-lang/triton/actions/workflows/wheels.yml) |
+| **`Documentation`** | **`PyPI`** | **`License`** |
+|-------------------- |----------- |-------------- |
+| [![Documentation](https://github.com/triton-lang/triton/actions/workflows/documentation.yml/badge.svg)](https://chenxingqiang.github.io/triton-metal) | [![PyPI](https://img.shields.io/pypi/v/triton-metal.svg)](https://pypi.org/project/triton-metal/) | [![License](https://img.shields.io/github/license/chengxingqiang/triton-metal)](https://github.com/chengxingqiang/triton-metal/blob/main/LICENSE) |
 
-# Triton
+# Triton-Metal
 
-This is the development repository of Triton, a language and compiler for writing highly efficient custom Deep-Learning primitives. The aim of Triton is to provide an open-source environment to write fast code at higher productivity than CUDA, but also with higher flexibility than other existing DSLs.
+Triton-Metal is an enhanced version of Triton with optimized Metal backend support for Apple Silicon GPUs. This fork focuses on delivering high performance for ML workloads on M1, M2, and M3 chips, with special optimizations for the M3's advanced capabilities.
 
 The foundations of this project are described in the following MAPL2019 publication: [Triton: An Intermediate Language and Compiler for Tiled Neural Network Computations](http://www.eecs.harvard.edu/~htk/publication/2019-mapl-tillet-kung-cox.pdf). Please consider citing this work if you use Triton!
 
-The [official documentation](https://triton-lang.org) contains installation instructions and tutorials.  See also these third-party [Triton puzzles](https://github.com/srush/Triton-Puzzles), which can all be run using the Triton interpreter -- no GPU required.
+The [official documentation](https://chenxingqiang.github.io/triton-metal) contains installation instructions and tutorials specific to the Metal backend.
 
 # Quick Installation
 
-You can install the latest stable release of Triton from pip:
+You can install the latest stable release of Triton-Metal from PyPI:
 
 ```shell
-pip install triton
+pip install triton-metal
 ```
 
-Binary wheels are available for CPython 3.9-3.13.
+For the full functionality with Metal backend, install with the metal extras:
+
+```shell
+pip install "triton-metal[metal]"
+```
+
+Binary wheels are available for:
+- macOS 13.5+ on Apple Silicon (M1/M2/M3)
+- CPython 3.9-3.13
+
+# Metal Backend Features
+
+The Metal backend enables running Triton kernels on Apple Silicon GPUs with the following optimizations:
+
+- Full MLX integration for efficient Metal execution
+- M3-specific optimizations leveraging 64KB shared memory (vs 32KB on M1/M2)
+- 8-wide vectorization support for M3 chips
+- Tensor core utilization for matrix operations on M3
+- Enhanced SIMD operations (32-wide vs 16-wide on M1/M2)
+- Dynamic register caching
+- Automatic hardware detection and optimization
+
+## Requirements
+
+- macOS 13.5 or higher
+- Apple Silicon Mac (M1/M2/M3)
+- MLX 0.3.0 or higher (installed automatically with `pip install "triton-metal[metal]"`)
+
+## Usage
+
+To use the Metal backend:
+
+```python
+import os
+os.environ["TRITON_BACKEND"] = "metal"  # Set this before importing Triton
+
+import triton_metal
+import triton_metal.language as tl
+
+# Your Triton code here
+```
 
 # Enabling Blackwell Support
 
@@ -67,7 +107,7 @@ Finally, follow the instructions below to install triton from source.
 # Install from source
 
 ```shell
-git clone https://github.com/triton-lang/triton.git
+git clone https://github.com/triton-lang/triton_metal.git
 cd triton
 
 pip install -r python/requirements.txt # build-time dependencies
@@ -77,7 +117,7 @@ pip install -e .
 Or with a virtualenv:
 
 ```shell
-git clone https://github.com/triton-lang/triton.git
+git clone https://github.com/triton-lang/triton_metal.git
 cd triton
 
 python -m venv .venv --prompt triton
@@ -181,7 +221,7 @@ $ make test-nogpu
 
 # Tips for hacking
 
-For detailed instructions on how to debug Triton's frontend, please refer to this [tutorial](https://triton-lang.org/main/programming-guide/chapter-3/debugging.html). The following includes additional tips for hacking on Triton's backend.
+For detailed instructions on how to debug Triton's frontend, please refer to this [tutorial](https://chenxingqiang.github.io/triton-metalmain/programming-guide/chapter-3/debugging.html). The following includes additional tips for hacking on Triton's backend.
 
 **Configuration knobs**
 
@@ -244,141 +284,4 @@ See [`python/triton/knobs.py`](python/triton/knobs.py) for the full list of conf
   `MLIR_ENABLE_DIAGNOSTICS=remarks,operations` enables remarks and IR operations,
   while `MLIR_ENABLE_DIAGNOSTICS=warnings,stacktraces` enables warnings with
   stacktraces. By default, only errors are shown. Setting `warnings` includes
-  errors and warnings; `remarks` includes errors, warnings, and remarks.
-- `MLIR_ENABLE_REMARK` is deprecated. Please use `MLIR_ENABLE_DIAGNOSTICS=remarks`.
-- `TRITON_KERNEL_DUMP` enables the dumping of the IR from each compilation stage and the final ptx/amdgcn.
-- `TRITON_DUMP_DIR` specifies the directory to save the dumped IR and ptx/amdgcn when `TRITON_KERNEL_DUMP` is set to 1.
-- `TRITON_KERNEL_OVERRIDE` enables the override of the compiled kernel with a user-specified IR/ptx/amdgcn at the beginning of each compilation stage.
-- `TRITON_OVERRIDE_DIR` specifies the directory from which to load the IR/ptx/amdgcn files when `TRITON_KERNEL_OVERRIDE` is set to 1.
-- `TRITON_F32_DEFAULT` sets the default input precision of `tl.dot` when using 32-bit floats, which can be either `ieee`, `tf32`, or `tf32x3`.
-- `TRITON_FRONT_END_DEBUGGING=1` disables exception wrapping when an error occurs in the compiler frontend, allowing the full stack trace to be seen.
-
-N.B. Some of these environment variables don't have a knob in `knobs.py`-- those are only relevant to the C++ layer(s), hence they don't exist in the python layer.
-
-**Kernel Override Steps**
-
-```bash
-export TRITON_ALWAYS_COMPILE=1
-export TRITON_KERNEL_DUMP=1
-export TRITON_DUMP_DIR=<dump_dir>
-export TRITON_KERNEL_OVERRIDE=1
-export TRITON_OVERRIDE_DIR=<override_dir>
-# Step 1: Run the kernel once to dump kernel's IRs and ptx/amdgcn in $TRITON_DUMP_DIR
-# Step 2: Copy $TRITON_DUMP_DIR/<kernel_hash> to $TRITON_OVERRIDE_DIR
-# Step 3: Delete the stages that you do not want to override and modify the stage you do want to override
-# Step 4: Run the kernel again to see the overridden result
-```
-
-
-# Changelog
-
-Version 2.0 is out! New features include:
-
-- Many, many bug fixes
-- Performance improvements
-- Backend rewritten to use MLIR
-- Support for kernels that contain back-to-back matmuls (e.g., flash attention)
-
-# Contributing
-
-Community contributions are more than welcome, whether it be to fix bugs or to add new features at [github](https://github.com/triton-lang/triton/). For more detailed instructions, please visit our [contributor's guide](CONTRIBUTING.md).
-
-# Compatibility
-
-Supported Platforms:
-
-- Linux
-
-Supported Hardware:
-
-- NVIDIA GPUs (Compute Capability 8.0+)
-- AMD GPUs (ROCm 6.2+)
-- Under development: CPUs
-
-# Development Container (Dev Container)
-
-**Dev Containers** for the Triton project are available from
-the [triton-dev-containers repository](https://github.com/redhat-et/triton-dev-containers)
-
-### Key Benefits:
-- **Consistency**: All developers can work with the same development
-  environment, ensuring uniform behavior across different systems.
-- **Isolation**: The container prevents potential conflicts with software
-  installed on your local machine.
-- **Portability**: Easily share the development environment with team members,
-  minimizing onboarding time and setup issues.
-
-### How to Use the Dev Container:
-
-For detailed instructions on how to use the dev containers please see
-the [dev container user guide](https://github.com/redhat-et/triton-dev-containers/blob/main/.devcontainer/devcontainer.md)
-
-## Metal Backend for Apple Silicon
-
-Triton now includes a Metal backend that enables running Triton kernels on Apple Silicon GPUs (M1, M2, and M3 chips) via the [MLX](https://github.com/ml-explore/mlx) framework.
-
-### Installation
-
-The Metal backend is automatically included when installing Triton on macOS with Apple Silicon. You can also explicitly enable it on any platform by setting the `TRITON_BUILD_WITH_METAL` environment variable:
-
-```bash
-# Install Triton with Metal backend
-TRITON_BUILD_WITH_METAL=ON pip install -e .
-# Or with extras for Metal dependencies (MLX)
-pip install -e ".[metal]"
-```
-
-### Requirements
-
-- macOS 13.5 or higher
-- Apple Silicon Mac (M1/M2/M3)
-- MLX 0.3.0 or higher
-
-### M3-Specific Optimizations
-
-The Metal backend includes specialized optimizations for M3 chips that leverage:
-- 64KB of shared memory (vs 32KB on M1/M2)
-- 8-wide vectorization (vs 4-wide on M1/M2)
-- Tensor cores for matrix operations
-- Enhanced SIMD operations (32-wide vs 16-wide)
-- Dynamic register caching
-
-These optimizations are automatically applied when running on M3 hardware.
-
-### Usage
-
-To use the Metal backend:
-
-```python
-import os
-os.environ["TRITON_BACKEND"] = "metal"  # Set this before importing Triton
-
-import triton
-import triton.language as tl
-
-# Your Triton code here
-```
-
-See the [Metal documentation](metal/python/docs/) and [examples](third_party/metal/python/examples/) for more details.
-
-# Triton-Metal: Enhanced Metal Backend for Triton
-
-This is Cheng Xingqiang's fork of Triton with enhanced Metal backend support for Apple Silicon GPUs. The focus of this repository is to provide optimized performance for ML workloads on M1, M2, and especially M3 chips.
-
-## Key Features
-
-- Full MLX integration for efficient Metal execution
-- M3-specific optimizations leveraging 64KB shared memory
-- 8-wide vectorization support for M3 chips
-- Tensor core utilization for matrix operations
-- Enhanced SIMD operations (32-wide vs 16-wide on M1/M2)
-- Automatic hardware detection and optimization
-
-## Installation
-
-```bash
-# Install from source with Metal support
-git clone https://github.com/chengxingqiang/triton-metal.git
-cd triton-metal
-pip install -e ".[metal]"
-```
+  errors and warnings; `remarks`

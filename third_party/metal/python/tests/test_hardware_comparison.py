@@ -14,9 +14,6 @@ import argparse
 import numpy as np
 from typing import Dict, List, Tuple, Optional, Any
 
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 # This file is a placeholder for future implementation
 # of comprehensive hardware comparison tests across different
 # Apple Silicon generations (M1/M2/M3).

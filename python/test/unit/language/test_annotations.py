@@ -1,7 +1,7 @@
 from __future__ import annotations
 import torch
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 import pytest
 
 
@@ -23,7 +23,7 @@ def annotated_function(return_type=None, **arg_types):
                          )
 def test_int_annotation(signed, width, device):
 
-    @triton.jit
+    @triton_metal.jit
     @annotated_function(X=torch.tensor, v=f"tl.{'' if signed else 'u'}int{width}")
     def _kernel(X, v):
         tl.store(X + v, v)
@@ -39,7 +39,7 @@ def test_int_annotation(signed, width, device):
 # Test that unknown annotations do not emit an error
 def test_unknown_annotation(device):
 
-    @triton.jit
+    @triton_metal.jit
     def _kernel(X: torch.Tensor, N: int, BLOCK_SIZE: tl.constexpr):
         pass
 

@@ -8,7 +8,7 @@ In doing so, you will learn about:
 
 * The basic programming model of Triton.
 
-* The `triton.jit` decorator, which is used to define Triton kernels.
+* The `triton_metal.jit` decorator, which is used to define Triton kernels.
 
 * The best practices for validating and benchmarking your custom ops against native reference implementations.
 
@@ -20,13 +20,13 @@ In doing so, you will learn about:
 
 import torch
 
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 
-DEVICE = triton.runtime.driver.active.get_active_torch_device()
+DEVICE = triton_metal.runtime.driver.active.get_active_torch_device()
 
 
-@triton.jit
+@triton_metal.jit
 def add_kernel(x_ptr,  # *Pointer* to first input vector.
                y_ptr,  # *Pointer* to second input vector.
                output_ptr,  # *Pointer* to output vector.
@@ -67,10 +67,10 @@ def add(x: torch.Tensor, y: torch.Tensor):
     # The SPMD launch grid denotes the number of kernel instances that run in parallel.
     # It is analogous to CUDA launch grids. It can be either Tuple[int], or Callable(metaparameters) -> Tuple[int].
     # In this case, we use a 1D grid where the size is the number of blocks:
-    grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']), )
+    grid = lambda meta: (triton_metal.cdiv(n_elements, meta['BLOCK_SIZE']), )
     # NOTE:
     #  - Each torch.tensor object is implicitly converted into a pointer to its first element.
-    #  - `triton.jit`'ed functions can be indexed with a launch grid to obtain a callable GPU kernel.
+    #  - `triton_metal.jit`'ed functions can be indexed with a launch grid to obtain a callable GPU kernel.
     #  - Don't forget to pass meta-parameters as keywords arguments.
     add_kernel[grid](x, y, output, n_elements, BLOCK_SIZE=1024)
     # We return a handle to z but, since `torch.cuda.synchronize()` hasn't been called, the kernel is still
@@ -104,8 +104,8 @@ print(f'The maximum difference between torch and triton is '
 # for different problem sizes.
 
 
-@triton.testing.perf_report(
-    triton.testing.Benchmark(
+@triton_metal.testing.perf_report(
+    triton_metal.testing.Benchmark(
         x_names=['size'],  # Argument names to use as an x-axis for the plot.
         x_vals=[2**i for i in range(12, 28, 1)],  # Different possible values for `x_name`.
         x_log=True,  # x axis is logarithmic.
@@ -122,9 +122,9 @@ def benchmark(size, provider):
     y = torch.rand(size, device=DEVICE, dtype=torch.float32)
     quantiles = [0.5, 0.2, 0.8]
     if provider == 'torch':
-        ms, min_ms, max_ms = triton.testing.do_bench(lambda: x + y, quantiles=quantiles)
+        ms, min_ms, max_ms = triton_metal.testing.do_bench(lambda: x + y, quantiles=quantiles)
     if provider == 'triton':
-        ms, min_ms, max_ms = triton.testing.do_bench(lambda: add(x, y), quantiles=quantiles)
+        ms, min_ms, max_ms = triton_metal.testing.do_bench(lambda: add(x, y), quantiles=quantiles)
     gbps = lambda ms: 3 * x.numel() * x.element_size() * 1e-9 / (ms * 1e-3)
     return gbps(ms), gbps(max_ms), gbps(min_ms)
 

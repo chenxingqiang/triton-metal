@@ -9,8 +9,8 @@ It shows examples of various operations supported by the Metal backend.
 import os
 import time
 import numpy as np
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 
 # Set backend to Metal explicitly if it's not already set
 if "TRITON_BACKEND" not in os.environ:
@@ -27,7 +27,7 @@ def print_device_info():
         print(f"MLX device: {device}")
         
         # Try to get additional Metal info
-        import mlx.metal as metal
+        import MLX.metal as metal
         if hasattr(metal, "device_name"):
             print(f"Device name: {metal.device_name()}")
             print(f"macOS version: {metal.macos_version()}")
@@ -44,7 +44,7 @@ print_device_info()
 # Example 1: Vector Addition
 print("\n=== Example 1: Vector Addition ===")
 
-@triton.jit
+@triton_metal.jit
 def add_kernel(
     x_ptr, y_ptr, output_ptr,
     n_elements,
@@ -85,7 +85,7 @@ def run_vector_addition(n_elements=1024*1024):
     
     # Define grid
     BLOCK_SIZE = 128
-    grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
+    grid = (triton_metal.cdiv(n_elements, BLOCK_SIZE),)
     
     # Warm-up
     add_kernel[grid](x, y, output, n_elements, BLOCK_SIZE=BLOCK_SIZE)
@@ -118,7 +118,7 @@ run_vector_addition()
 # Example 2: Matrix Multiplication
 print("\n=== Example 2: Matrix Multiplication ===")
 
-@triton.jit
+@triton_metal.jit
 def matmul_kernel(
     a_ptr, b_ptr, c_ptr,
     M, N, K,
@@ -198,8 +198,8 @@ def run_matrix_multiplication(M=1024, N=1024, K=1024):
     
     # Define grid
     grid = (
-        triton.cdiv(M, BLOCK_SIZE_M),
-        triton.cdiv(N, BLOCK_SIZE_N)
+        triton_metal.cdiv(M, BLOCK_SIZE_M),
+        triton_metal.cdiv(N, BLOCK_SIZE_N)
     )
     
     # Warm-up
@@ -251,7 +251,7 @@ run_matrix_multiplication()
 # Example 3: Element-wise operations
 print("\n=== Example 3: Element-wise Operations ===")
 
-@triton.jit
+@triton_metal.jit
 def elementwise_ops_kernel(
     x_ptr, y_ptr, out1_ptr, out2_ptr, out3_ptr, out4_ptr,
     n_elements,
@@ -305,7 +305,7 @@ def run_elementwise_ops(n_elements=1024*1024):
     
     # Define grid
     BLOCK_SIZE = 256
-    grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
+    grid = (triton_metal.cdiv(n_elements, BLOCK_SIZE),)
     
     # Run kernel
     elementwise_ops_kernel[grid](

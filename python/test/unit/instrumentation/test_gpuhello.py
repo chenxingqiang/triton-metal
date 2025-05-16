@@ -3,8 +3,8 @@ import torch
 import pytest
 import os
 
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 
 test_stdout = 'Hello From First Instruction of GPU Kernel: kernel1\ttest_gpuhello.py:17:4\n\
 Hello From First Instruction of GPU Kernel: kernel2\ttest_gpuhello.py:23:4\n\
@@ -12,19 +12,19 @@ Hello From First Instruction of GPU Kernel: kernel3\ttest_gpuhello.py:29:4\n'
 
 
 @pytest.mark.parametrize(None, [None])
-@triton.jit
+@triton_metal.jit
 def kernel1(BLOCK_SIZE: tl.constexpr):
     return
 
 
 @pytest.mark.parametrize(None, [None])
-@triton.jit
+@triton_metal.jit
 def kernel2(BLOCK_SIZE: tl.constexpr):
     return
 
 
 @pytest.mark.parametrize(None, [None])
-@triton.jit
+@triton_metal.jit
 def kernel3(BLOCK_SIZE: tl.constexpr):
     return
 
@@ -32,7 +32,7 @@ def kernel3(BLOCK_SIZE: tl.constexpr):
 def func(x: torch.Tensor, y: torch.Tensor):
     output = torch.empty_like(x)
     n_elements = output.numel()
-    grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']), )
+    grid = lambda meta: (triton_metal.cdiv(n_elements, meta['BLOCK_SIZE']), )
     kernel1[grid](BLOCK_SIZE=1024)
     kernel2[grid](BLOCK_SIZE=1024)
     kernel3[grid](BLOCK_SIZE=1024)

@@ -23,10 +23,10 @@ Python API
 ----------
 
 - :doc:`triton <python-api/triton>`
-- :doc:`triton.language <python-api/triton.language>`
-- :doc:`triton.testing <python-api/triton.testing>`
+- :doc:`triton_metal.language <python-api/triton_metal.language>`
+- :doc:`triton_metal.testing <python-api/triton_metal.testing>`
 - :doc:`Triton semantics <python-api/triton-semantics>`
-- :doc:`triton.language.extra.cuda <python-api/triton.language.extra.cuda>`
+- :doc:`triton_metal.language.extra.cuda <python-api/triton_metal.language.extra.cuda>`
 
 
 .. toctree::
@@ -35,8 +35,8 @@ Python API
    :hidden:
 
    python-api/triton
-   python-api/triton.language
-   python-api/triton.testing
+   python-api/triton_metal.language
+   python-api/triton_metal.testing
    python-api/triton-semantics
 
 

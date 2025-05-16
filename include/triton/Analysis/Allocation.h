@@ -184,7 +184,7 @@ private:
   struct BufferT {
     /// Explicit: ttg.local_alloc
     /// Scratch: ttg.convert_layout
-    /// Virtual: triton.call
+    /// Virtual: triton_metal.call
     enum class BufferKind { Explicit, Scratch, Virtual };
 
     BufferKind kind;

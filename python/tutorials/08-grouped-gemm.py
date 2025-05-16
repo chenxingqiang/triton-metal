@@ -29,14 +29,14 @@ of gemms. The scheduling is static and we do it on device.
 from typing import Optional
 import torch
 
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 
-DEVICE = triton.runtime.driver.active.get_active_torch_device()
+DEVICE = triton_metal.runtime.driver.active.get_active_torch_device()
 
 
 def is_cuda():
-    return triton.runtime.driver.active.get_current_target().backend == "cuda"
+    return triton_metal.runtime.driver.active.get_current_target().backend == "cuda"
 
 
 def supports_tma():
@@ -49,39 +49,39 @@ def num_sms():
     return 148
 
 
-@triton.autotune(
+@triton_metal.autotune(
     configs=[
-        triton.Config({
+        triton_metal.Config({
             'BLOCK_SIZE_M': 128,
             'BLOCK_SIZE_N': 128,
             'BLOCK_SIZE_K': 32,
             'NUM_SM': 84,
         }),
-        triton.Config({
+        triton_metal.Config({
             'BLOCK_SIZE_M': 128,
             'BLOCK_SIZE_N': 128,
             'BLOCK_SIZE_K': 32,
             'NUM_SM': 128,
         }),
-        triton.Config({
+        triton_metal.Config({
             'BLOCK_SIZE_M': 64,
             'BLOCK_SIZE_N': 64,
             'BLOCK_SIZE_K': 32,
             'NUM_SM': 84,
         }),
-        triton.Config({
+        triton_metal.Config({
             'BLOCK_SIZE_M': 64,
             'BLOCK_SIZE_N': 64,
             'BLOCK_SIZE_K': 32,
             'NUM_SM': 128,
         }),
-        triton.Config({
+        triton_metal.Config({
             'BLOCK_SIZE_M': 128,
             'BLOCK_SIZE_N': 128,
             'BLOCK_SIZE_K': 64,
             'NUM_SM': num_sms(),
         }),
-        triton.Config({
+        triton_metal.Config({
             'BLOCK_SIZE_M': 64,
             'BLOCK_SIZE_N': 128,
             'BLOCK_SIZE_K': 64,
@@ -90,7 +90,7 @@ def num_sms():
     ],
     key=['group_size'],
 )
-@triton.jit
+@triton_metal.jit
 def grouped_matmul_kernel(
     # device tensor of matrices pointers
     group_a_ptrs,
@@ -214,7 +214,7 @@ def group_gemm_fn(group_A, group_B):
 
 
 tma_configs = [
-    triton.Config({'BLOCK_SIZE_M': BM, 'BLOCK_SIZE_N': BN, 'BLOCK_SIZE_K' : BK}, num_stages=s, num_warps=w) \
+    triton_metal.Config({'BLOCK_SIZE_M': BM, 'BLOCK_SIZE_N': BN, 'BLOCK_SIZE_K' : BK}, num_stages=s, num_warps=w) \
     for BM in [128]\
     for BN in [128, 256]\
     for BK in [64, 128]\
@@ -223,11 +223,11 @@ tma_configs = [
 ]
 
 
-@triton.autotune(
+@triton_metal.autotune(
     tma_configs,
     key=['group_a_ptrs', 'group_b_ptrs', 'gropup_c_ptrs', 'group_size'],
 )
-@triton.jit
+@triton_metal.jit
 def grouped_matmul_tma_kernel(
     # device tensor of matrices pointers
     group_a_ptrs,
@@ -361,7 +361,7 @@ def group_gemm_tma_fn(group_A, group_B):
     def alloc_fn(size: int, alignment: int, stream: Optional[int]):
         return torch.empty(size, device="cuda", dtype=torch.int8)
 
-    triton.set_allocator(alloc_fn)
+    triton_metal.set_allocator(alloc_fn)
 
     grid = lambda META: (META['NUM_SM'], )
     grouped_matmul_tma_kernel[grid](d_a_ptrs, d_b_ptrs, d_c_ptrs, d_g_sizes, d_g_lds, group_size,
@@ -424,8 +424,8 @@ def torch_perf_fn(group_A, group_B):
         torch.matmul(a, b)
 
 
-@triton.testing.perf_report(
-    triton.testing.Benchmark(
+@triton_metal.testing.perf_report(
+    triton_metal.testing.Benchmark(
         # argument names to use as an x-axis for the plot
         x_names=['N'],
         x_vals=[2**i for i in range(7, 11)],  # different possible values for `x_name`
@@ -479,19 +479,19 @@ def benchmark_square_matrices(N, provider):
 
     quantiles = [0.5, 0.2, 0.8]
     if provider == 'cublas':
-        ms, min_ms, max_ms = triton.testing.do_bench(lambda: torch_perf_fn(group_A, group_B), quantiles=quantiles)
+        ms, min_ms, max_ms = triton_metal.testing.do_bench(lambda: torch_perf_fn(group_A, group_B), quantiles=quantiles)
     if provider == 'triton':
-        ms, min_ms, max_ms = triton.testing.do_bench(
+        ms, min_ms, max_ms = triton_metal.testing.do_bench(
             lambda: triton_perf_fn(d_a_ptrs, d_b_ptrs, d_c_ptrs, d_g_sizes, d_g_lds, group_size), quantiles=quantiles)
     if provider == 'triton-tma':
-        ms, min_ms, max_ms = triton.testing.do_bench(
+        ms, min_ms, max_ms = triton_metal.testing.do_bench(
             lambda: triton_tma_perf_fn(d_a_ptrs, d_b_t_ptrs, d_c_ptrs, d_g_sizes, d_g_lds, group_size, dtype=torch.
                                        float16), quantiles=quantiles)
     return ms, max_ms, min_ms
 
 
-@triton.testing.perf_report(
-    triton.testing.Benchmark(
+@triton_metal.testing.perf_report(
+    triton_metal.testing.Benchmark(
         # argument names to use as an x-axis for the plot
         x_names=['M'],
         x_vals=[2**i for i in range(7, 11)],  # different possible values for `x_name`
@@ -550,12 +550,12 @@ def benchmark_batches(M, provider):
 
     quantiles = [0.5, 0.2, 0.8]
     if provider == 'cublas':
-        ms, min_ms, max_ms = triton.testing.do_bench(lambda: torch_perf_fn(group_A, group_B), quantiles=quantiles)
+        ms, min_ms, max_ms = triton_metal.testing.do_bench(lambda: torch_perf_fn(group_A, group_B), quantiles=quantiles)
     if provider == 'triton':
-        ms, min_ms, max_ms = triton.testing.do_bench(
+        ms, min_ms, max_ms = triton_metal.testing.do_bench(
             lambda: triton_perf_fn(d_a_ptrs, d_b_ptrs, d_c_ptrs, d_g_sizes, d_g_lds, group_size), quantiles=quantiles)
     if provider == 'triton-tma':
-        ms, min_ms, max_ms = triton.testing.do_bench(
+        ms, min_ms, max_ms = triton_metal.testing.do_bench(
             lambda: triton_tma_perf_fn(d_a_ptrs, d_b_t_ptrs, d_c_ptrs, d_g_sizes, d_g_t_lds, group_size, dtype=torch.
                                        float16), quantiles=quantiles)
     return ms, max_ms, min_ms

@@ -1,24 +1,24 @@
 import pytest
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 from typing import NamedTuple
 import torch
 
 
-@triton.jit
+@triton_metal.jit
 def _tuple_increment(values):
     for i in tl.static_range(len(values)):
         values[i] = values[i] + 1
     return values
 
 
-@triton.jit
+@triton_metal.jit
 def _tuple_index_func(Ptrs, values):
     for i in tl.static_range(len(values)):
         tl.store(Ptrs[i], values[i])
 
 
-@triton.jit
+@triton_metal.jit
 def _tuple_index(_0, Ptrs, _1: tl.constexpr, values, _2, _3: tl.constexpr, _4):
     values = _tuple_increment(values)
     _tuple_index_func(Ptrs, values)
@@ -35,7 +35,7 @@ def test_index(size, device):
 # ----
 
 
-@triton.jit
+@triton_metal.jit
 def _tuple_assign(XPtrs, YPtrs, values):
     # assign from tuple
     X0, X1 = XPtrs
@@ -67,7 +67,7 @@ def test_assign(device):
 # -------
 
 
-@triton.jit
+@triton_metal.jit
 def _tuple_fn0(Ptr, cst2: tl.constexpr, tuple1):
     tl.static_assert(tuple1[1] is None)
     tl.store(Ptr + 5, cst2)
@@ -79,7 +79,7 @@ def _tuple_fn0(Ptr, cst2: tl.constexpr, tuple1):
 
 # test serialization/deserialization of tuple arguments in
 # the frontend.
-@triton.jit
+@triton_metal.jit
 def _tuple_serialize(Ptr, N1, tuple1, cst1: tl.constexpr, val1, tuple2):
     tl.static_assert(N1 is None)
     tl.static_assert(tuple1[1][1] is None)
@@ -115,18 +115,18 @@ class Tensor(NamedTuple):
     stride: tuple
 
 
-@triton.jit
+@triton_metal.jit
 def _namedtuple_create_func0(shape, ptr, stride):
     return Tensor(shape=shape, ptr=ptr, stride=stride)
 
 
-@triton.jit
+@triton_metal.jit
 def _namedtuple_create_func1(shape, ptr, stride):
     tensor = Tensor(shape=shape, ptr=ptr, stride=stride)
     return tensor
 
 
-@triton.jit
+@triton_metal.jit
 def _namedtuple_mask_func(Tensor, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     offs_m = tl.arange(0, BLOCK_M)
     offs_n = tl.arange(0, BLOCK_N)
@@ -134,7 +134,7 @@ def _namedtuple_mask_func(Tensor, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     return mask
 
 
-@triton.jit
+@triton_metal.jit
 def _namedtuple_kernel(closure, _X, Y, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     offs_m = tl.arange(0, BLOCK_M)
     offs_n = tl.arange(0, BLOCK_N)
@@ -153,7 +153,7 @@ def test_namedtuple(device):
     y = torch.empty((16, 16), dtype=torch.float32, device=device)
     a = torch.tensor([5.2], dtype=torch.float32, device=device)
 
-    @triton.jit
+    @triton_metal.jit
     def mul(x, a):
         return x * tl.load(a)
 

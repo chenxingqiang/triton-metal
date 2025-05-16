@@ -2,8 +2,8 @@ import pytest
 import torch
 import tempfile
 
-import triton
-from triton.backends.compiler import GPUTarget
+import triton_metal
+from triton_metal.backends.compiler import GPUTarget
 
 
 def test_tmem_copy_2d():
@@ -76,7 +76,7 @@ ttng.wait_barrier %93, %c0_i32 : !ttg.memdesc<1xi64, #shared1, #ttg.shared_memor
     with tempfile.NamedTemporaryFile(mode='w', suffix='.ttgir') as f:
         f.write(ir)
         f.flush()
-        kernel = triton.compile(f.name, target=GPUTarget("cuda", 100, 32))
+        kernel = triton_metal.compile(f.name, target=GPUTarget("cuda", 100, 32))
 
     x = torch.randint(size=(smem_h, 4), low=-100, high=100, dtype=torch.int32).to(device)
     z_tri = torch.zeros(size=(128, num_cols), dtype=torch.int32).to(device)

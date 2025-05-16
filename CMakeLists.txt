@@ -6,7 +6,7 @@ include(CMakeDependentOption)
 project(triton LANGUAGES CXX C
                VERSION 2.0
                DESCRIPTION "A language and compiler for custom Deep Learning operations"
-               HOMEPAGE_URL "https://github.com/openai/triton")
+               HOMEPAGE_URL "https://github.com/chenxingqiang/triton-metal")
 
 # Detect Apple Silicon
 if(APPLE AND CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")

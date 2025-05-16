@@ -1,7 +1,7 @@
 import pytest
 import torch
-import triton.language as tl
-import triton
+import triton_metal.language as tl
+import triton_metal
 
 
 @pytest.mark.parametrize('cond', [True, False])
@@ -13,7 +13,7 @@ def test_device_assert(monkeypatch, cond, opt_flag, env_var, jit_flag, device):
     monkeypatch.setenv("TRITON_DEBUG", str(int(env_var)))
     torch.zeros([1], dtype=torch.int32, device=device)
 
-    @triton.jit(debug=jit_flag)
+    @triton_metal.jit(debug=jit_flag)
     def _kernel(COND: tl.constexpr):
         tl.device_assert(COND, 'test')
 
@@ -37,7 +37,7 @@ def test_device_assert_barrier(monkeypatch, device):
     monkeypatch.setenv("TRITON_DEBUG", "1")
     tensor = torch.zeros([16], dtype=torch.int32, device=device)
 
-    @triton.jit
+    @triton_metal.jit
     def _kernel(in_ptr0):
         xindex = tl.arange(0, 8)
         tmp0 = tl.load(in_ptr0 + xindex)
@@ -50,12 +50,12 @@ def test_device_assert_barrier(monkeypatch, device):
 @pytest.mark.parametrize("cond", [False, True])
 def test_static_assert(cond):
 
-    @triton.jit
+    @triton_metal.jit
     def _kernel(COND: tl.constexpr):
         tl.static_assert(COND)
 
     if not cond:
-        with pytest.raises(triton.compiler.errors.CompileTimeAssertionFailure):
+        with pytest.raises(triton_metal.compiler.errors.CompileTimeAssertionFailure):
             _kernel[(1, )](cond)
         return
 
@@ -94,7 +94,7 @@ def _test_overflow(x, y, x_dtype, y_dtype, debug, should_overflow, tri_func, ref
 @pytest.mark.forked
 def test_sanitize_int_add_overflow(x, y, x_dtype, y_dtype, debug, should_overflow, device):
 
-    @triton.jit
+    @triton_metal.jit
     def _kernel_add(X, Y, Z):
         tl.store(Z, tl.load(X) + tl.load(Y))
 
@@ -115,7 +115,7 @@ def test_sanitize_int_add_overflow(x, y, x_dtype, y_dtype, debug, should_overflo
 @pytest.mark.forked
 def test_sanitize_int_mul_overflow(x, y, x_dtype, y_dtype, debug, should_overflow, device):
 
-    @triton.jit
+    @triton_metal.jit
     def _kernel_mul(X, Y, Z):
         tl.store(Z, tl.load(X) * tl.load(Y))
 
@@ -135,7 +135,7 @@ def test_sanitize_int_mul_overflow(x, y, x_dtype, y_dtype, debug, should_overflo
 @pytest.mark.forked
 def test_sanitize_int_sub_overflow(x, y, x_dtype, y_dtype, debug, should_overflow, device):
 
-    @triton.jit
+    @triton_metal.jit
     def _kernel_sub(X, Y, Z):
         tl.store(Z, tl.load(X) - tl.load(Y))
 

@@ -1,5 +1,5 @@
 import torch
-import triton
+import triton_metal
 from dataclasses import dataclass, field
 from .routing_details._routing_compute import _routing_memset_indx
 from .routing_details._routing_compute import _routing_compute_indx_offs
@@ -45,7 +45,7 @@ class RoutingData:
         if n_rows <= self.n_expts_tot:
             return n_rows
         else:
-            return triton.cdiv(max(n_rows - self.n_expts_tot + 1, 0), block_m) + self.n_expts_tot - 1
+            return triton_metal.cdiv(max(n_rows - self.n_expts_tot + 1, 0), block_m) + self.n_expts_tot - 1
 
 
 # --------------------------
@@ -58,7 +58,7 @@ def routing(logits, n_expts_act, expt_indx=None, simulated_ep=1):
     from .reduction import sum
     from .compaction import compaction
     assert expt_indx is None
-    cdiv = triton.cdiv
+    cdiv = triton_metal.cdiv
     HIST_BLOCK_M = 64
     INDX_OFFS_BLOCK_M = 512
     MEMSET_BLOCK = 1024

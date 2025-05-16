@@ -4,7 +4,7 @@ from functools import wraps
 from typing import Optional, Union
 
 from .flags import get_profiling_on
-from triton._C.libproton import proton as libproton
+from triton_metal._C.libproton import proton as libproton
 
 thread_local_scopes = threading.local()
 

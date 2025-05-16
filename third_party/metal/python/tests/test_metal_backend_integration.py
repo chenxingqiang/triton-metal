@@ -9,7 +9,6 @@ and accessible, without requiring the full Triton installation.
 import os
 import sys
 import importlib
-import pkgutil
 import pkg_resources
 
 def test_metal_package():
@@ -24,7 +23,7 @@ def test_metal_package():
     except ImportError:
         try:
             # Check if it's registered as an entry point
-            metal_entry_points = list(pkg_resources.iter_entry_points("triton.backends", name="metal"))
+            metal_entry_points = list(pkg_resources.iter_entry_points("triton_metal.backends", name="metal"))
             if metal_entry_points:
                 print(f"✅ Metal backend is registered as an entry point: {metal_entry_points[0]}")
                 return True

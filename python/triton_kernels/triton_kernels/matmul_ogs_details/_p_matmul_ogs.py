@@ -1,7 +1,7 @@
 import functools
 import torch
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 from triton_kernels import target_info
 from triton_kernels.numerics_details.mxfp import _unswizzle_mx_block, get_scaled_dot_format_string
 from triton_kernels.numerics_details.flexpoint import float_to_flex, load_scale, nan_propagating_absmax_reduce, compute_scale
@@ -27,7 +27,7 @@ def inline_function(f):
     # disguise the function as a Triton builtin to avoid raising an error
     # that we're calling a non-JIT function from within a Triton kernel:
     wrapper.__triton_builtin__ = True
-    wrapper.__module__ = getattr(tl, "__name__", "triton.language")
+    wrapper.__module__ = getattr(tl, "__name__", "triton_metal.language")
     return wrapper
 
 @inline_function
@@ -53,7 +53,7 @@ def _update_tensor_desc(desc, ptr, shape=None, _builder=None):
         _builder=_builder,
     )
 
-@triton.jit
+@triton_metal.jit
 def _make_tensor_desc(ptr, shape, strides, block_shape, transpose: tl.constexpr = False):
     tl.static_assert(len(shape) == len(strides))
     tl.static_assert(len(strides) == len(block_shape))
@@ -72,7 +72,7 @@ def _make_tensor_desc(ptr, shape, strides, block_shape, transpose: tl.constexpr 
             block_shape=block_shape,
         )
 
-@triton.jit
+@triton_metal.jit
 def _load_tile_attrs(
     tile_id, num_tiles, grid_m, grid_n, padding_m,
     M, ExptData, ExptHist, ExptOffs,
@@ -111,7 +111,7 @@ def _load_tile_attrs(
     return expt_id, start_z, start_m, eM, off_m, off_n, pid_k
 
 
-@triton.jit
+@triton_metal.jit
 def _load_writeback_idx_and_mask(WriteBackIndx, writeback_size, offs, mask):
     mask = mask & (offs < writeback_size)
     offs = tl.load(WriteBackIndx + offs, mask=mask, other=-1)
@@ -120,7 +120,7 @@ def _load_writeback_idx_and_mask(WriteBackIndx, writeback_size, offs, mask):
 
 
 _matmul_ogs_repr = make_matmul_repr("_p_matmul_ogs", [0, 1, 2])
-@triton.jit(repr=_matmul_ogs_repr, launch_metadata=matmul_launch_metadata)
+@triton_metal.jit(repr=_matmul_ogs_repr, launch_metadata=matmul_launch_metadata)
 def _p_matmul_ogs(
              Y, Out, stride_y_k, stride_y_z, stride_y_m, stride_y_n,
              YExpectedScale, YActualScale, YChecksumScale,

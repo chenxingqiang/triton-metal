@@ -57,7 +57,7 @@ pip install mlx>=0.3.0
 
 ```bash
 # Clone the repository
-git clone https://github.com/openai/triton.git
+git clone https://github.com/chenxingqiang/triton-metal.git
 cd triton
 
 # Switch to the branch with Metal support
@@ -78,7 +78,7 @@ pip install triton-metal
 Run the environment checker to verify that everything is set up correctly:
 
 ```bash
-python -c "import triton; print(triton.backends.metal.check_environment())"
+python -c "import triton_metal; print(triton_metal.backends.metal.check_environment())"
 ```
 
 You should see confirmation that the Metal backend is available.
@@ -117,10 +117,10 @@ Advanced settings can be configured in `~/.triton/metal_config.json`:
 Using the Metal backend is transparent - the Triton compiler automatically selects the Metal backend when running on Apple Silicon:
 
 ```python
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 
-@triton.jit
+@triton_metal.jit
 def add_kernel(
     x_ptr, y_ptr, output_ptr, n,
     BLOCK_SIZE: tl.constexpr,
@@ -145,7 +145,7 @@ def add_kernel(
 You can explicitly specify the Metal backend:
 
 ```python
-@triton.jit(backend="metal")
+@triton_metal.jit(backend="metal")
 def my_kernel(...):
     # Kernel code
     ...
@@ -156,11 +156,11 @@ def my_kernel(...):
 For Metal-specific optimizations, you can use the `metal` namespace:
 
 ```python
-import triton
-import triton.language as tl
-import triton.backends.metal as metal
+import triton_metal
+import triton_metal.language as tl
+import triton_metal.backends.metal as metal
 
-@triton.jit
+@triton_metal.jit
 def optimized_kernel(...):
     # Use Metal-specific optimizations when available
     if metal.is_available():
@@ -177,7 +177,7 @@ Metal-specific memory layout optimizations can significantly improve performance
 
 ```python
 # Example of using COALESCED layout for reduction operations
-@triton.jit
+@triton_metal.jit
 def reduction_kernel(
     input_ptr, output_ptr, n,
     BLOCK_SIZE: tl.constexpr,
@@ -205,7 +205,7 @@ def reduction_kernel(
 The Metal backend includes an autotuning system that optimizes kernel parameters. Enable it with:
 
 ```python
-@triton.jit(autotune=True)
+@triton_metal.jit(autotune=True)
 def my_kernel(...):
     # Kernel code
     ...
@@ -217,7 +217,7 @@ For manual performance tuning, consider:
 
 1. **Threadgroup Size**: Optimal size depends on your operation and chip generation
    ```python
-   @triton.jit(config={'THREADS_PER_WARP': 32, 'WARPS_PER_BLOCK': 4})
+   @triton_metal.jit(config={'THREADS_PER_WARP': 32, 'WARPS_PER_BLOCK': 4})
    ```
 
 2. **Memory Access Patterns**: Adjust based on your operation type
@@ -269,8 +269,8 @@ TRITON_METAL_DEBUG=1 python your_script.py
 
 ### Support Resources
 
-- [GitHub Issues](https://github.com/openai/triton/issues)
-- [Triton Discussion Forum](https://github.com/openai/triton/discussions)
+- [GitHub Issues](https://github.com/chenxingqiang/triton-metal/issues)
+- [Triton Discussion Forum](https://github.com/chenxingqiang/triton-metal/discussions)
 - [MLX Documentation](https://ml-explore.github.io/mlx/build/html/index.html)
 
 ## Advanced Topics
@@ -280,17 +280,17 @@ TRITON_METAL_DEBUG=1 python your_script.py
 For operations not supported by Triton, you can create custom Metal implementations:
 
 ```python
-import triton
+import triton_metal
 import mlx.core as mx
 
 # Register a custom operation implementation
-@triton.backends.metal.register_custom_op("my_custom_op")
+@triton_metal.backends.metal.register_custom_op("my_custom_op")
 def custom_op_implementation(x, y):
     # Implement using MLX operations
     return mx.custom_metal_function(x, y)
 
 # Use in Triton kernel
-@triton.jit
+@triton_metal.jit
 def kernel_with_custom_op(...):
     # ...
     result = tl.custom("my_custom_op", x, y)
@@ -303,15 +303,15 @@ The Metal backend can interoperate with MLX:
 
 ```python
 import mlx.core as mx
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 
 # Create MLX arrays
 x_mlx = mx.random.normal((1024, 1024))
 y_mlx = mx.random.normal((1024, 1024))
 
 # Define Triton kernel
-@triton.jit
+@triton_metal.jit
 def add_kernel(
     x_ptr, y_ptr, output_ptr, n,
     BLOCK_SIZE: tl.constexpr,

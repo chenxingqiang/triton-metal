@@ -17,7 +17,7 @@ class NullAllocator:
 
     def __call__(self, size: int, alignment: int, stream: Optional[int]) -> Buffer:
         raise RuntimeError("Kernel requires a runtime memory allocation, but no allocator was set. " +
-                           "Use triton.set_allocator to specify an allocator.")
+                           "Use triton_metal.set_allocator to specify an allocator.")
 
 
 _allocator: Allocator = NullAllocator()

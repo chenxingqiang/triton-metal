@@ -14,11 +14,11 @@ import os
 import inspect
 from numpy.random import RandomState
 
-import triton
-import triton.language as tl
-from triton.language.extra import libdevice
+import triton_metal
+import triton_metal.language as tl
+from triton_metal.language.extra import libdevice
 
-from triton._internal_testing import (
+from triton_metal._internal_testing import (
     integral_dtypes,
     int_dtypes,
     str_to_triton_dtype,
@@ -44,7 +44,7 @@ from triton._internal_testing import (
     torch_dtype_name,
     to_numpy,
 )
-from triton.runtime.errors import InterpreterError
+from triton_metal.runtime.errors import InterpreterError
 
 
 @contextlib.contextmanager
@@ -71,7 +71,7 @@ GPU_DIALECT = "ttg"
 if is_interpreter():
     THREADS_PER_WARP = 1
 elif is_hip():
-    THREADS_PER_WARP = triton.runtime.driver.active.get_current_target().warp_size
+    THREADS_PER_WARP = triton_metal.runtime.driver.active.get_current_target().warp_size
     # for CDNA multiple variants of mma instructions are supported:
     # mfma 16x16/mfma 32x32
     # 0 is a special value for automatic heuristic
@@ -100,7 +100,7 @@ def patch_kernel(template, to_replace):
         exec(src, globals(), local_namespace)
         return local_namespace[template.fn.__name__]
     else:
-        kernel = triton.JITFunction(template.fn)
+        kernel = triton_metal.JITFunction(template.fn)
         for key, value in to_replace.items():
             kernel._unsafe_update_src(kernel.src.replace(key, value))
         return kernel
@@ -290,7 +290,7 @@ def is_layout_applicable(layout) -> bool:
             return False
         return True
     elif is_hip():
-        target_arch = triton.runtime.driver.active.get_current_target().arch
+        target_arch = triton_metal.runtime.driver.active.get_current_target().arch
         if "gfx11" in target_arch:
             # RDNA 3
             return isinstance(layout, WmmaLayout)
@@ -312,7 +312,7 @@ def filter_layouts(layouts):
 def test_empty_kernel(dtype_x, device):
     SIZE = 128
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(X, SIZE: tl.constexpr):
         pass
 
@@ -323,13 +323,13 @@ def test_empty_kernel(dtype_x, device):
 
 def test_scalar_overflow(device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel():
         huge_int: tl.constexpr = 0xFFFFFFFFFFFFFF
         x = tl.full((), 32, dtype=tl.int32)
         y = x + huge_int
 
-    with pytest.raises(triton.TritonError, match="out of range"):
+    with pytest.raises(triton_metal.TritonError, match="out of range"):
         kernel[(1, )]()
 
 
@@ -339,7 +339,7 @@ def _test_unary(dtype_x, expr, numpy_expr=None, device='cuda', num_ctas=1):
     SIZE = 128
     # define the kernel / launch-grid
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(Z, X, SIZE: tl.constexpr):
         off = tl.arange(0, SIZE)
         x = tl.load(X + off)
@@ -400,7 +400,7 @@ def _test_binary(dtype_x, dtype_y, expr, numpy_expr=None, mode_x='real', mode_y=
     SIZE = 128
     # define the kernel / launch-grid
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(Z, X, Y, SIZE: tl.constexpr):
         off = tl.arange(0, SIZE)
         x = tl.load(X + off)
@@ -408,7 +408,7 @@ def _test_binary(dtype_x, dtype_y, expr, numpy_expr=None, mode_x='real', mode_y=
         z = GENERATE_TEST_HERE
         tl.store(Z + off, z)
 
-    @triton.jit
+    @triton_metal.jit
     def kernel_broadcast_lhs(Z, X, Y, SIZE: tl.constexpr):
         off = tl.arange(0, SIZE)
         x = tl.load(X)
@@ -416,7 +416,7 @@ def _test_binary(dtype_x, dtype_y, expr, numpy_expr=None, mode_x='real', mode_y=
         z = GENERATE_TEST_HERE
         tl.store(Z + off, z)
 
-    @triton.jit
+    @triton_metal.jit
     def kernel_broadcast_rhs(Z, X, Y, SIZE: tl.constexpr):
         off = tl.arange(0, SIZE)
         x = tl.load(X + off)
@@ -424,7 +424,7 @@ def _test_binary(dtype_x, dtype_y, expr, numpy_expr=None, mode_x='real', mode_y=
         z = GENERATE_TEST_HERE
         tl.store(Z + off, z)
 
-    @triton.jit
+    @triton_metal.jit
     def kernel_scalar_rhs(Z, X, y: tl.constexpr, SIZE: tl.constexpr):
         off = tl.arange(0, SIZE)
         x = tl.load(X + off)
@@ -537,7 +537,7 @@ def _min_max_integral_mod_value(dtype_x, dtype_y) -> Optional[int]:
 
 def test_dtype_codegen():
     for dtype in dtypes_with_bfloat16:
-        full_name = f"triton.language.{dtype}"
+        full_name = f"triton_metal.language.{dtype}"
         assert repr(eval(full_name)) == full_name
 
 
@@ -578,7 +578,7 @@ def test_bin_op(dtype_x, dtype_y, op, num_ctas, device):
 
     if (op in ('%', '/') and ((dtype_x in int_dtypes and dtype_y in uint_dtypes) or
                               (dtype_x in uint_dtypes and dtype_y in int_dtypes))):
-        with pytest.raises(triton.TritonError, match='Cannot use .* because they have different signedness'):
+        with pytest.raises(triton_metal.TritonError, match='Cannot use .* because they have different signedness'):
             _test_binary(dtype_x, dtype_y, expr, numpy_expr, device=device, num_ctas=num_ctas)
     else:
         # skip when bfloat16, as NumPy's ref performs the computation in float32
@@ -611,7 +611,7 @@ def test_bin_op(dtype_x, dtype_y, op, num_ctas, device):
 def test_addptr(dtype, order, device):
     check_type_supported(dtype, device)
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(x, y, ORDER: tl.constexpr, SIZE: tl.constexpr):
         offs = tl.arange(0, SIZE)
         if ORDER == 0:
@@ -657,7 +657,7 @@ def test_unsigned_name_mangling(device):
     SIZE = 128
     # define the kernel / launch-grid
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(O1, O2, X, Y, SIZE: tl.constexpr):
         off = tl.arange(0, SIZE)
         x = tl.load(X + off)
@@ -706,7 +706,7 @@ def test_bitwise_op(dtype_x, dtype_y, op, num_ctas, device):
         numpy_expr = None
     if 'float' in dtype_x + dtype_y:
         # The CompilationError must have been caused by a C++ exception with this text.
-        with pytest.raises(triton.TritonError, match='invalid operands of type'):
+        with pytest.raises(triton_metal.TritonError, match='invalid operands of type'):
             _test_binary(dtype_x, dtype_y, expr, numpy_expr='np.array([])', device=device, num_ctas=num_ctas)
     else:
         _test_binary(dtype_x, dtype_y, expr, numpy_expr, device=device, num_ctas=num_ctas)
@@ -763,7 +763,7 @@ def test_compare_op(dtype_x, dtype_y, op, mode_x, mode_y, num_ctas, device):
 def test_broadcast(dtype, device):
     check_type_supported(dtype, device)
 
-    @triton.jit
+    @triton_metal.jit
     def broadcast_kernel(x_ptr, y_ptr, y_broadcasted_ptr, M: tl.constexpr, N: tl.constexpr):
         offset1 = tl.arange(0, M)
         offset2 = tl.arange(0, N)
@@ -795,7 +795,7 @@ def test_broadcast(dtype, device):
 @pytest.mark.interpreter
 def test_slice(device):
 
-    @triton.jit
+    @triton_metal.jit
     def slice_kernel(XBLOCK: tl.constexpr):
         data = tl.arange(0, XBLOCK)
         tl.static_assert(data.shape == [XBLOCK])
@@ -845,11 +845,11 @@ def test_slice(device):
 def test_invalid_slice(device):
     dst = torch.empty(128, device=device)
 
-    @triton.jit
+    @triton_metal.jit
     def _kernel(dst):
         dst[10:]
 
-    with pytest.raises(triton.TritonError, match='unsupported tensor index'):
+    with pytest.raises(triton_metal.TritonError, match='unsupported tensor index'):
         _kernel[(1, )](dst=dst)
 
 
@@ -859,7 +859,7 @@ def test_invalid_slice(device):
 @pytest.mark.interpreter
 def test_expand_dims(device):
 
-    @triton.jit
+    @triton_metal.jit
     def expand_dims_kernel(dummy, N: tl.constexpr):
         offset1 = tl.arange(0, N)
 
@@ -907,34 +907,34 @@ def test_expand_dims(device):
 @pytest.mark.interpreter
 def test_expand_dims_error_cases(device):
 
-    @triton.jit
+    @triton_metal.jit
     def dim_out_of_range1(dummy, N: tl.constexpr):
         offset1 = tl.arange(0, N)
 
         t = tl.expand_dims(offset1, -2)
         t = tl.expand_dims(offset1, -3)
 
-    @triton.jit
+    @triton_metal.jit
     def dim_out_of_range2(dummy, N: tl.constexpr):
         offset1 = tl.arange(0, N)
 
         t = tl.expand_dims(offset1, 1)
         t = tl.expand_dims(offset1, 2)
 
-    @triton.jit
+    @triton_metal.jit
     def dim_out_of_range3(dummy, N: tl.constexpr):
         offset1 = tl.arange(0, 1)
         scalar = tl.sum(offset1)
 
         t = tl.expand_dims(scalar, 1)
 
-    @triton.jit
+    @triton_metal.jit
     def duplicate_dim1(dummy, N: tl.constexpr):
         offset1 = tl.arange(0, N)
 
         t = tl.expand_dims(offset1, (0, 0))
 
-    @triton.jit
+    @triton_metal.jit
     def duplicate_dim2(dummy, N: tl.constexpr):
         offset1 = tl.arange(0, N)
 
@@ -943,23 +943,23 @@ def test_expand_dims_error_cases(device):
     N = 32
     dummy_tensor = torch.empty((), device=device)
 
-    with pytest.raises(triton.TritonError) as exc_info:
+    with pytest.raises(triton_metal.TritonError) as exc_info:
         dim_out_of_range1[(1, )](dummy_tensor, N)
     assert "invalid axis -3" in str(exc_info.value.__cause__)
 
-    with pytest.raises(triton.TritonError) as exc_info:
+    with pytest.raises(triton_metal.TritonError) as exc_info:
         dim_out_of_range2[(1, )](dummy_tensor, N)
     assert "invalid axis 2" in str(exc_info.value.__cause__)
 
-    with pytest.raises(triton.TritonError) as exc_info:
+    with pytest.raises(triton_metal.TritonError) as exc_info:
         dim_out_of_range3[(1, )](dummy_tensor, N)
     assert "invalid axis 1" in str(exc_info.value.__cause__)
 
-    with pytest.raises(triton.TritonError) as exc_info:
+    with pytest.raises(triton_metal.TritonError) as exc_info:
         duplicate_dim1[(1, )](dummy_tensor, N)
     assert re.search(r"duplicate axes, normalized axes = \[0, 0\]", str(exc_info.value.__cause__))
 
-    with pytest.raises(triton.TritonError) as exc_info:
+    with pytest.raises(triton_metal.TritonError) as exc_info:
         duplicate_dim2[(1, )](dummy_tensor, N)
     assert re.search(r"duplicate axes, normalized axes = \[0, 0\]", str(exc_info.value.__cause__))
 
@@ -971,11 +971,11 @@ def test_expand_dims_error_cases(device):
 def test_invalid_pid_axis(device):
     dst = torch.empty(128, device=device)
 
-    @triton.jit
+    @triton_metal.jit
     def _kernel(dst):
         pid = tl.program_id(20)
 
-    with pytest.raises(triton.TritonError) as exc_info:
+    with pytest.raises(triton_metal.TritonError) as exc_info:
         _kernel[(1, )](dst)
     assert re.search(r"program_id axis must be 0, 1, or 2 but got 20", str(exc_info.value.__cause__))
 
@@ -993,7 +993,7 @@ def test_where(dtype, num_ctas, device):
         select_ptrs = True
     check_type_supported(dtype, device)
 
-    @triton.jit
+    @triton_metal.jit
     def where_kernel(cond_ptr, a_ptr, b_ptr, output_ptr, n_elements, BLOCK_SIZE: tl.constexpr,
                      TEST_POINTERS: tl.constexpr, TEST_SCALAR_POINTERS: tl.constexpr):
         offsets = tl.program_id(axis=0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
@@ -1024,7 +1024,7 @@ def test_where(dtype, num_ctas, device):
     y_tri = to_triton(y, device=device, dst_type=dtype)
     z_tri = to_triton(np.empty(SIZE, dtype=z.dtype), device=device, dst_type=dtype)
 
-    grid = lambda meta: (triton.cdiv(SIZE, meta['BLOCK_SIZE']), )
+    grid = lambda meta: (triton_metal.cdiv(SIZE, meta['BLOCK_SIZE']), )
     where_kernel[grid](cond_tri, x_tri, y_tri, z_tri, SIZE, BLOCK_SIZE=1024, TEST_POINTERS=select_ptrs,
                        TEST_SCALAR_POINTERS=False, num_ctas=num_ctas)
     assert (z == to_numpy(z_tri)).all()
@@ -1039,7 +1039,7 @@ def test_where(dtype, num_ctas, device):
 @pytest.mark.parametrize("num_ctas", num_ctas_list)
 def test_where_broadcast(num_ctas, device):
 
-    @triton.jit
+    @triton_metal.jit
     def where_kernel(cond_ptr, a_ptr, out_ptr, BLOCK_SIZE: tl.constexpr):
         xoffsets = tl.arange(0, BLOCK_SIZE)[:, None]
         yoffsets = tl.arange(0, BLOCK_SIZE)[None, :]
@@ -1049,7 +1049,7 @@ def test_where_broadcast(num_ctas, device):
         res = tl.where(mask, vals, 0.)
         tl.store(out_ptr + yoffsets + BLOCK_SIZE * xoffsets, res)
 
-    @triton.jit
+    @triton_metal.jit
     def where_scalar_condition(a_ptr, out_ptr, BLOCK_SIZE: tl.constexpr):
         xoffsets = tl.arange(0, BLOCK_SIZE)[:, None]
         yoffsets = tl.arange(0, BLOCK_SIZE)[None, :]
@@ -1109,7 +1109,7 @@ def test_math_erf_op(dtype, device):
     check_type_supported(dtype, device)
     SIZE = 128
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(Z, X, SIZE: tl.constexpr):
         off = tl.arange(0, SIZE)
         x = tl.load(X + off)
@@ -1130,7 +1130,7 @@ def test_math_fma_op(dtype, device):
     check_type_supported(dtype, device)
     SIZE = 128
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(Z, X, Y, W, SIZE: tl.constexpr):
         off = tl.arange(0, SIZE)
         x = tl.load(X + off)
@@ -1168,7 +1168,7 @@ def test_math_divide_op(expr, num_ctas, device):
 @pytest.mark.parametrize("num_ctas", num_ctas_list)
 def test_precise_math(expr_prec, expr_ref, num_ctas, device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(X, Y, OUT, OUT_REF, BLOCK: tl.constexpr):
         x = tl.load(X + tl.arange(0, BLOCK))
         y = tl.load(Y + tl.arange(0, BLOCK))
@@ -1219,7 +1219,7 @@ def test_abs_fp8(in_dtype, device):
         if in_dtype == tl.float8e4nv and cc < (8, 9):
             pytest.skip("float8e4nv not supported on CUDA < 8.9")
 
-    @triton.jit
+    @triton_metal.jit
     def abs_kernel(X, Z, SIZE: tl.constexpr):
         off = tl.arange(0, SIZE)
         x = tl.load(X + off)
@@ -1230,10 +1230,10 @@ def test_abs_fp8(in_dtype, device):
     # f32_to_f8 doesn't handle nan, so we make sure f8_tensor doesn't contain any nan
     all_exp_ones = (f8_tensor & 0b01111100) == 128 - 2**in_dtype.fp_mantissa_width
     f8_tensor[all_exp_ones] = 0
-    f8 = triton.reinterpret(f8_tensor, in_dtype)
+    f8 = triton_metal.reinterpret(f8_tensor, in_dtype)
     n_elements = f8_tensor.numel()
     out_f8 = torch.empty_like(f8_tensor)
-    abs_kernel[(1, )](f8, triton.reinterpret(out_f8, in_dtype), n_elements)
+    abs_kernel[(1, )](f8, triton_metal.reinterpret(out_f8, in_dtype), n_elements)
 
     f32_tensor = convert_float_to_float32(f8_tensor, in_dtype)
     expect = f32_tensor.abs()
@@ -1249,7 +1249,7 @@ def test_abs_fp8(in_dtype, device):
 @pytest.mark.interpreter
 def test_shapes_as_params(device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel():
         a = tl.arange(0, 32).expand_dims(-1).broadcast_to(32, 32)
         tl.static_assert(a.shape == [tl.constexpr(32), tl.constexpr(32)])
@@ -1286,7 +1286,7 @@ def test_transpose(dtype_x, device):
     check_type_supported(dtype_x, device)
     SIZE = 128
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(Z, X, SIZE: tl.constexpr):
         off = tl.arange(0, SIZE)
         off2d = off[None, :] + (tl.arange(0, 2) * SIZE)[:, None]
@@ -1332,7 +1332,7 @@ def test_index1d(expr, dtype_str, num_ctas, device):
     shape_z_dim_mismatch = [64 for _ in range(rank_y)]
 
     # Triton kernel
-    @triton.jit
+    @triton_metal.jit
     def kernel(Z, X, SIZE: tl.constexpr):
         m = tl.arange(0, SIZE)
         n = tl.arange(0, SIZE)
@@ -1366,7 +1366,7 @@ def test_index1d(expr, dtype_str, num_ctas, device):
     def catch_compilation_error(kernel):
         try:
             kernel[(1, )](z_tri, x_tri, num_warps=1, SIZE=shape_x[0], num_ctas=num_ctas)
-        except triton.CompilationError as e:
+        except triton_metal.CompilationError as e:
             np.testing.assert_(True)
         except BaseException:
             np.testing.assert_(False)
@@ -1380,7 +1380,7 @@ def test_index1d(expr, dtype_str, num_ctas, device):
 # ---------------
 
 
-@triton.jit
+@triton_metal.jit
 def tuples_fn(a, b):
     return a + b, \
         a - b, \
@@ -1390,7 +1390,7 @@ def tuples_fn(a, b):
 @pytest.mark.interpreter
 def test_tuples(device):
 
-    @triton.jit
+    @triton_metal.jit
     def with_fn(X, Y, A, B, C):
         x = tl.load(X)
         y = tl.load(Y)
@@ -1399,7 +1399,7 @@ def test_tuples(device):
         tl.store(B, b)
         tl.store(C, c)
 
-    @triton.jit
+    @triton_metal.jit
     def without_fn(X, Y, A, B, C):
         x = tl.load(X)
         y = tl.load(Y)
@@ -1421,23 +1421,23 @@ def test_tuples(device):
         assert c_tri == c_ref
 
 
-@triton.jit(noinline=True)
+@triton_metal.jit(noinline=True)
 def noinline_simple_fn(x, y, Z):
     z = x + y
     tl.store(Z, z)
 
 
-@triton.jit(noinline=True)
+@triton_metal.jit(noinline=True)
 def noinline_call_graph_fn1(x):
     return x + 1
 
 
-@triton.jit(noinline=True)
+@triton_metal.jit(noinline=True)
 def noinline_call_graph_fn2(y):
     return y + 2
 
 
-@triton.jit(noinline=True)
+@triton_metal.jit(noinline=True)
 def noinline_call_graph_fn(x, y, Z):
     t0 = noinline_call_graph_fn1(x)
     t1 = noinline_call_graph_fn2(y)
@@ -1445,7 +1445,7 @@ def noinline_call_graph_fn(x, y, Z):
     tl.store(Z, z)
 
 
-@triton.jit(noinline=True)
+@triton_metal.jit(noinline=True)
 def noinline_shared_fn(x, y, Z):
     offs = tl.arange(0, 16)[:, None] * 16 + tl.arange(0, 16)[None, :]
     z = tl.load(Z + offs)
@@ -1453,7 +1453,7 @@ def noinline_shared_fn(x, y, Z):
     tl.store(Z + offs, z)
 
 
-@triton.jit(noinline=True)
+@triton_metal.jit(noinline=True)
 def noinline_dynamic_fn(x, y, Z):
     if x >= 1:
         x = noinline_call_graph_fn1(x)
@@ -1467,12 +1467,12 @@ def noinline_dynamic_fn(x, y, Z):
     tl.store(Z, z)
 
 
-@triton.jit(noinline=True)
+@triton_metal.jit(noinline=True)
 def noinline_call_multi_values_fn(x, y):
     return x + 1, y + 2
 
 
-@triton.jit(noinline=True)
+@triton_metal.jit(noinline=True)
 def noinline_multi_values_fn(x, y, Z):
     x, y = noinline_call_multi_values_fn(x, y)
     z = x + y
@@ -1483,7 +1483,7 @@ def noinline_multi_values_fn(x, y, Z):
 @pytest.mark.parametrize("mode", ["simple", "call_graph", "shared", "dynamic", "multi_values"])
 def test_noinline(mode, device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(X, Y, Z):
         x = tl.load(X)
         y = tl.load(Y)
@@ -1546,7 +1546,7 @@ def test_atomic_rmw(op, dtype_x_str, mode, sem, device):
     n_programs = 5
 
     # triton kernel
-    @triton.jit
+    @triton_metal.jit
     def kernel(X, Z):
         pid = tl.program_id(0)
         x = tl.load(X + pid)
@@ -1609,7 +1609,7 @@ def test_atomic_rmw(op, dtype_x_str, mode, sem, device):
 @pytest.mark.parametrize("num_ctas", num_ctas_list)
 def test_atomic_rmw_predicate(num_ctas, device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(X):
         val = tl.program_id(0)
         if val < 64:
@@ -1633,7 +1633,7 @@ def test_tensor_atomic_rmw(shape, axis, num_ctas, dtype_x_str, check_return_val,
     shape0, shape1 = shape
     # triton kernel
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(Z, X, OLD, AXIS: tl.constexpr, SHAPE0: tl.constexpr, SHAPE1: tl.constexpr, DTYPE: tl.constexpr,
                RETURN_VAL: tl.constexpr):
         off0 = tl.arange(0, SHAPE0)
@@ -1710,7 +1710,7 @@ def test_tensor_atomic_rmw(shape, axis, num_ctas, dtype_x_str, check_return_val,
 def test_tensor_atomic_add_non_exclusive_offset(size, num_ctas, dtype_x_str, device):
     check_type_supported(dtype_x_str, device)
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(X, val, NUM: tl.constexpr):
         off = tl.arange(0, NUM)
         offset = off[:, None] * NUM + off[None, :]
@@ -1739,7 +1739,7 @@ def test_tensor_atomic_add_access_patterns(shape, idx_order, mask_step, num_ctas
     if is_interpreter():
         pytest.skip("not supported in the interpreter")
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(in_ptr, idx_ptr, out_ptr, shape0, shape1, mask_step, XBLOCK: tl.constexpr):
         xoffset = tl.program_id(0) * XBLOCK
         x_idx = xoffset + tl.arange(0, XBLOCK)[:]
@@ -1788,7 +1788,7 @@ def test_tensor_atomic_add_access_patterns(shape, idx_order, mask_step, num_ctas
 def test_tensor_atomic_rmw_block(num_ctas, device):
     shape = (8, 8)
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(X, SHAPE0: tl.constexpr, SHAPE1: tl.constexpr):
         off0 = tl.arange(0, SHAPE0)
         off1 = tl.arange(0, SHAPE1)
@@ -1807,7 +1807,7 @@ def test_tensor_atomic_rmw_block(num_ctas, device):
 @pytest.mark.parametrize("num_ctas", num_ctas_list)
 def test_atomic_cas(sem, num_ctas, device):
     # 1. make sure that atomic_cas changes the original value (Lock)
-    @triton.jit
+    @triton_metal.jit
     def change_value(Lock):
         tl.atomic_cas(Lock, 0, 1)
 
@@ -1817,7 +1817,7 @@ def test_atomic_cas(sem, num_ctas, device):
     assert (Lock[0] == 1)
 
     # 2. only one block enters the critical section
-    @triton.jit
+    @triton_metal.jit
     def serialized_add(data, Lock, SEM: tl.constexpr):
         ptrs = data + tl.arange(0, 128)
         while tl.atomic_cas(Lock, 0, 1, SEM) == 1:
@@ -1848,7 +1848,7 @@ def test_atomic_cas(sem, num_ctas, device):
 @pytest.mark.parametrize("num_ctas", num_ctas_list)
 def test_tensor_atomic_cas(sem, num_ctas, device):
 
-    @triton.jit
+    @triton_metal.jit
     def change_value(X, BLOCK_SIZE: tl.constexpr, sem: tl.constexpr):
         pid = tl.program_id(axis=0)
         block_start = pid * BLOCK_SIZE
@@ -1869,7 +1869,7 @@ def test_tensor_atomic_cas(sem, num_ctas, device):
                     reason="Requires compute capability >= 9 for NV")
 def test_load_scope_sem_coop_grid_cta_not_one(device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel_r(ptrs, BLOCK_SIZE: tl.constexpr):
         numel = 512
         offset = tl.program_id(0) * BLOCK_SIZE
@@ -1888,7 +1888,7 @@ def test_load_scope_sem_coop_grid_cta_not_one(device):
 @pytest.mark.interpreter
 def test_load_scope_sem_coop_grid_cta_one(device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel_r(ptrs, BLOCK_SIZE: tl.constexpr):
         numel = 512
         offset = tl.program_id(0) * BLOCK_SIZE
@@ -1908,7 +1908,7 @@ def test_load_scope_sem_coop_grid_cta_one(device):
 @pytest.mark.interpreter
 def test_atomic_min_max_neg_zero(device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(inp, out_max, out_min):
         idx = tl.program_id(0)
         x = tl.load(inp + idx)
@@ -1928,14 +1928,14 @@ def test_atomic_min_max_neg_zero(device):
 @pytest.mark.parametrize("dtype_str", ["float8_e4m3fn", "int8", "int16", "uint8", "uint16"])
 def test_atomic_unsupported_type(dtype_str, device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(I, O):
         x = tl.load(I)
         tl.atomic_add(O, x)
 
     I = torch.zeros((1, ), device=device, dtype=getattr(torch, dtype_str))
     O = torch.zeros((1, ), device=device, dtype=getattr(torch, dtype_str))
-    with pytest.raises(triton.TritonError):
+    with pytest.raises(triton_metal.TritonError):
         kernel[(1, )](I, O)
 
 
@@ -1999,7 +1999,7 @@ def test_cast(dtype_x, dtype_z, bitcast, size, num_ctas, device):
         x_tri = x_tri.to(getattr(torch, dtype_z)).to(getattr(torch, dtype_x))
     # triton kernel
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(X, Z, TO_TYPE: tl.constexpr, BITCAST: tl.constexpr, SIZE: tl.constexpr, ARG_HASH: tl.constexpr):
         x_ptr = X + tl.arange(0, SIZE)
         z_ptr = Z + tl.arange(0, SIZE)
@@ -2058,7 +2058,7 @@ def test_cast(dtype_x, dtype_z, bitcast, size, num_ctas, device):
 def test_cat(dtype_str, num_warps, device):
     check_type_supported(dtype_str, device)
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(X, Y, Z, N: tl.constexpr):
         offs = tl.arange(0, N)
         x = tl.load(X + offs)
@@ -2083,7 +2083,7 @@ def test_cat(dtype_str, num_warps, device):
 def test_store_constant(num_ctas, dtype_str, constant_field, device):
     check_type_supported(dtype_str, device)
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(output_ptr, n_elements, BLOCK_SIZE: tl.constexpr, CONSTANT_FIELD: tl.constexpr):
         offsets = tl.program_id(axis=0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
         if CONSTANT_FIELD == "value":
@@ -2109,7 +2109,7 @@ def test_store_constant(num_ctas, dtype_str, constant_field, device):
 
 def test_load_store_same_ptr(device):
 
-    @triton.jit()
+    @triton_metal.jit()
     def kernel(in_out_ptr):
         pid = tl.program_id(axis=0)
         x = tl.load(in_out_ptr + pid)
@@ -2129,7 +2129,7 @@ def test_load_store_same_ptr(device):
 @pytest.mark.parametrize("dtype_str", ['int32'])
 def test_umulhi(dtype_str, device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(X, Y, Z, N: tl.constexpr):
         offs = tl.arange(0, N)
         x = tl.load(X + offs)
@@ -2165,7 +2165,7 @@ def test_umulhi(dtype_str, device):
 @pytest.mark.interpreter
 def test_join(device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(X, Y, Z, N: tl.constexpr):
         offs = tl.arange(0, N)
         x = tl.load(X + offs)
@@ -2185,7 +2185,7 @@ def test_join(device):
 @pytest.mark.interpreter
 def test_join_scalars(device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(X, Y, Z):
         x = tl.load(X)
         y = tl.load(Y)
@@ -2204,7 +2204,7 @@ def test_join_scalars(device):
 @pytest.mark.interpreter
 def test_join_with_mma(device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(X, Z):
         x = tl.load(X + 16 * tl.arange(0, 32)[:, None] + tl.arange(0, 16)[None, :])  # (32,16)
         x2 = tl.join(x, 2 * x)  # (32,16,2)
@@ -2225,7 +2225,7 @@ def test_join_with_mma(device):
 @pytest.mark.parametrize("debug", [False, True])
 def test_interleave(device, debug):
 
-    @triton.jit(debug=debug)
+    @triton_metal.jit(debug=debug)
     def kernel(Z, N: tl.constexpr):
         z = tl.interleave(tl.arange(0, N), tl.arange(N, 2 * N))
         tl.store(Z + tl.arange(0, 2 * N), z)
@@ -2242,7 +2242,7 @@ def test_interleave(device, debug):
 @pytest.mark.interpreter
 def test_interleave_scalars(device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(X, Y, Z):
         z = tl.interleave(X, Y)
         tl.static_assert(z.shape == [tl.constexpr(2)])
@@ -2257,7 +2257,7 @@ def test_interleave_scalars(device):
 @pytest.mark.interpreter
 def test_split(device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(X, Z1, Z2, N: tl.constexpr):
         offs = tl.arange(0, N)
         x = tl.load(X + offs)
@@ -2279,7 +2279,7 @@ def test_split(device):
 @pytest.mark.interpreter
 def test_split_to_scalar(device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(X, Z1, Z2):
         offs = tl.arange(0, 2)
         x = tl.load(X + offs)
@@ -2372,7 +2372,7 @@ def deserialize_fp8(np_data, in_dtype):
 def test_max_returns_zero(device):
     # Simple test with a tl.max call that returns 0.  The interpreter had a bug
     # where it didn't handle this correctly.
-    @triton.jit
+    @triton_metal.jit
     def kernel(X, Z, BLOCK: tl.constexpr):
         x = tl.load(X + tl.arange(0, BLOCK))
         z = tl.max(x)
@@ -2409,7 +2409,7 @@ def test_reduce1d(op, dtype_str, shape, num_ctas, device):
     check_type_supported(dtype_str, device)  # bfloat16 on cc < 80 will not be tested
 
     # triton kernel
-    @triton.jit
+    @triton_metal.jit
     def kernel(X, Z, BLOCK: tl.constexpr):
         x = tl.load(X + tl.arange(0, BLOCK))
         GENERATE_TEST_HERE
@@ -2510,7 +2510,7 @@ reduce_bool = [(op, 'bool', shape, axis, False) for op in ['xor_sum'] for shape 
 def test_reduce(op, dtype_str, shape, axis, keep_dims, num_ctas, device):
     check_type_supported(dtype_str, device)  # bfloat16 on cc < 80 will not be tested
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(X, Z, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, BLOCK_K: tl.constexpr, IS_3D: tl.constexpr,
                AXIS: tl.constexpr, KEEP_DIMS: tl.constexpr, USE_I1: tl.constexpr):
         range_m = tl.arange(0, BLOCK_M)
@@ -2580,7 +2580,7 @@ def test_reduce(op, dtype_str, shape, axis, keep_dims, num_ctas, device):
     IS_3D = bool(len(shape) == 3)
     USE_I1 = dtype_str == 'bool'
     if axis is not None and axis >= len(shape):
-        with pytest.raises(triton.TritonError):
+        with pytest.raises(triton_metal.TritonError):
             kernel[(1, )](x_tri, z_tri, BLOCK_M=shape[0], BLOCK_N=shape[1], BLOCK_K=BLOCK_K, IS_3D=IS_3D, AXIS=axis,
                           KEEP_DIMS=keep_dims, USE_I1=USE_I1, num_ctas=num_ctas)
         return
@@ -2623,19 +2623,19 @@ negative_config = [('cumsum', 'float32', (32, 32), -1, False, 4)]
 
 def test_sum_dtype(device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel_dtype(out_ptr, init, in_dtype: tl.constexpr, out_dtype: tl.constexpr):
         x = tl.full((32, 32), init, dtype=in_dtype)
         x = tl.sum(x, dtype=out_dtype)
         tl.store(out_ptr, x.to(tl.int32))
 
-    @triton.jit
+    @triton_metal.jit
     def kernel_default_int(out_ptr):
         x = tl.full((32, 32), 1, dtype=tl.int1)
         x = tl.sum(x)
         tl.store(out_ptr, x)
 
-    @triton.jit
+    @triton_metal.jit
     def kernel_default_float(out_ptr):
         x = tl.full((32, 32), 1.0, dtype=tl.bfloat16)
         x = tl.sum(x)
@@ -2662,25 +2662,25 @@ def test_sum_dtype(device):
     torch.testing.assert_close(out[0], torch.tensor(32 * 32, dtype=torch.bfloat16, device=device))
 
 
-@triton.jit
+@triton_metal.jit
 # trivial associative but not commutative function
 def get_first_element(a, b):
     return a
 
 
 # Compute x_i = a_i * x_{i-1} + b_i
-@triton.jit
+@triton_metal.jit
 def linear_recurrence(a1, b1, a2, b2):
     return a1 * a2, b1 * a2 + b2
 
 
-@triton.jit
+@triton_metal.jit
 def cummax(v0, i0, v1, i1):
     gt = v0 > v1
     return tl.where(gt, v0, v1), tl.where(gt, i0, i1)
 
 
-@triton.jit
+@triton_metal.jit
 def roll(a1, b1_last, b1_cur, a2, b2_last, b2_cur):
     return a1 + a2, tl.where(a2 == 1, b1_cur, 0) + b2_last, b2_cur
 
@@ -2697,7 +2697,7 @@ def test_scan2d(op, dtype_str, shape, axis, reverse, num_warps, device):
     numpy_dtype_str = 'float32' if dtype_str == 'bfloat16' else dtype_str
 
     # triton kernel
-    @triton.jit
+    @triton_metal.jit
     def kernel(X, Y, Z, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, AXIS: tl.constexpr):
         range_m = tl.arange(0, BLOCK_M)
         range_n = tl.arange(0, BLOCK_N)
@@ -2832,7 +2832,7 @@ def test_scan2d(op, dtype_str, shape, axis, reverse, num_warps, device):
 @pytest.mark.parametrize("M, N", [[2048, 2], [1024, 8], [1024, 128], [256, 512], [32, 512], [8, 512], [8, 2]])
 def test_histogram(M, N, device):
 
-    @triton.jit
+    @triton_metal.jit
     def histogram_kernel(x_ptr, z_ptr, M: tl.constexpr, N: tl.constexpr):
         offset1 = tl.arange(0, M)
         offset2 = tl.arange(0, N)
@@ -2857,7 +2857,7 @@ def test_histogram(M, N, device):
 @pytest.mark.parametrize("M, N", [(1, 64), (2, 32), (4, 16), (8, 8), (16, 4), (32, 2), (64, 1)])
 def test_scan_1d(M, N, device):
 
-    @triton.jit
+    @triton_metal.jit
     def scan_kernel(out_ptr, in_ptr, M: tl.constexpr, N: tl.constexpr):
         input = tl.load(in_ptr + tl.arange(0, M))
         output = tl.cumsum(input).reshape([1, M]).broadcast_to([N, M])
@@ -2879,7 +2879,7 @@ def test_scan_1d(M, N, device):
 @pytest.mark.parametrize("num_pid_n", [2, 4])
 def test_optimize_thread_locality(op, BLOCK_N, N, num_pid_n, device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(X, Y, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
         start_m = tl.program_id(0)
         pid_n = tl.program_id(1)
@@ -2988,7 +2988,7 @@ def test_scan_layouts(M, N, src_layout, axis, add_overflow_check, device, tmp_pa
 
     temp_file = tmp_path / "test_scan_layouts.ttgir"
     temp_file.write_text(ir)
-    kernel = triton.compile(str(temp_file))
+    kernel = triton_metal.compile(str(temp_file))
 
     rs = RandomState(17)
     x = rs.randint(-100, 100, (M, N)).astype('int32')
@@ -3149,7 +3149,7 @@ def test_reduce_layouts(M, N, src_layout, axis, epilogue_kind, dtype_str, add_ov
 
     temp_file = tmp_path / "test_reduce_layouts.ttgir"
     temp_file.write_text(ir)
-    kernel = triton.compile(str(temp_file))
+    kernel = triton_metal.compile(str(temp_file))
 
     rs = RandomState(17)
     x = numpy_random((M, N), dtype_str=dtype_str, rs=rs, low=0, high=10)
@@ -3202,7 +3202,7 @@ def test_store_op(M, src_layout, device, tmp_path: pathlib.Path):
 
     temp_file = tmp_path / "test_store_op.ttgir"
     temp_file.write_text(ir)
-    store_kernel = triton.compile(str(temp_file))
+    store_kernel = triton_metal.compile(str(temp_file))
 
     rs = RandomState(17)
     x = rs.randint(0, 4, (M, 1)).astype('float32')
@@ -3254,7 +3254,7 @@ def test_convert1d(M, src_layout, dst_layout, src_dim, dst_dim, device, tmp_path
     """
     temp_file = tmp_path / "test_convert1d.ttgir"
     temp_file.write_text(ir)
-    kernel = triton.compile(str(temp_file))
+    kernel = triton_metal.compile(str(temp_file))
 
     rs = RandomState(17)
     x = rs.randint(0, 4, (M, )).astype('int32')
@@ -3296,7 +3296,7 @@ def test_convert1d_bool(M, src_layout, dst_layout, src_dim, dst_dim, device, tmp
     """
     temp_file = tmp_path / "test_convert1d.ttgir"
     temp_file.write_text(ir)
-    kernel = triton.compile(str(temp_file))
+    kernel = triton_metal.compile(str(temp_file))
 
     rs = RandomState(17)
     x = rs.randint(0, 2, (M, )).astype('bool')
@@ -3365,7 +3365,7 @@ def test_chain_reduce(M, N, src_layout, op, device, first_axis, tmp_path: pathli
     """
     temp_file = tmp_path / "test_chain_reduce.ttgir"
     temp_file.write_text(ir)
-    kernel = triton.compile(str(temp_file))
+    kernel = triton_metal.compile(str(temp_file))
 
     rs = RandomState(17)
     x = rs.randint(0, 4, (M, N)).astype('int32')
@@ -3384,7 +3384,7 @@ def test_chain_reduce(M, N, src_layout, op, device, first_axis, tmp_path: pathli
     np.testing.assert_allclose(z_ref, z_tri.cpu().numpy(), rtol=0.01, atol=1e-3)
 
 
-@triton.jit
+@triton_metal.jit
 def _welford_combine(mean_1, m2_1, weight_1, mean_2, m2_2, weight_2):
     delta = mean_2 - mean_1
     new_weight = weight_1 + weight_2
@@ -3396,7 +3396,7 @@ def _welford_combine(mean_1, m2_1, weight_1, mean_2, m2_2, weight_2):
     )
 
 
-@triton.jit
+@triton_metal.jit
 def _sum_combine(a, b):
     return a + b
 
@@ -3404,7 +3404,7 @@ def _sum_combine(a, b):
 @pytest.mark.interpreter
 def test_generic_reduction(device):
 
-    @triton.jit
+    @triton_metal.jit
     def var_mean_kernel(X, out_mean, out_var, out_sum0, out_sum1, BLOCK: tl.constexpr):
         xindex = tl.arange(0, BLOCK)
         x = tl.load(X + xindex)
@@ -3459,7 +3459,7 @@ def test_permute(dtype_str, shape, perm, num_ctas, device):
             pytest.skip("TODO Out of LDS for float32 with shape 128x128")
 
     # triton kernel
-    @triton.jit
+    @triton_metal.jit
     def kernel(X, stride_xm, stride_xn, Z, stride_zm, stride_zn, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
         off_m = tl.arange(0, BLOCK_M)
         off_n = tl.arange(0, BLOCK_N)
@@ -3508,7 +3508,7 @@ def test_permute(dtype_str, shape, perm, num_ctas, device):
 @pytest.mark.parametrize("perm", list(itertools.permutations([0, 1])))
 def test_trans_2d(dtype_str, shape, perm, device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(In, Out, in_shape1: tl.constexpr, in_shape2: tl.constexpr, ou_shape1: tl.constexpr,
                ou_shape2: tl.constexpr, trans1: tl.constexpr, trans2: tl.constexpr):
         in_offs = tl.arange(0, in_shape1)[:, None] * in_shape2 + tl.arange(0, in_shape2)[None, :]
@@ -3531,7 +3531,7 @@ def test_trans_2d(dtype_str, shape, perm, device):
 @pytest.mark.parametrize("perm", list(itertools.permutations([0, 1, 2, 3])))
 def test_trans_4d(dtype_str, shape, perm, device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(In, Out,  #
                in_shape1: tl.constexpr, in_shape2: tl.constexpr, in_shape3: tl.constexpr, in_shape4: tl.constexpr,
                ou_shape1: tl.constexpr, ou_shape2: tl.constexpr, ou_shape3: tl.constexpr, ou_shape4: tl.constexpr,
@@ -3739,7 +3739,7 @@ def test_dot(M, N, K, num_warps, col_a, col_b, epilogue, input_precision, in_dty
         # FIXME: mma v2 with num_ctas > 1 does not work
         pytest.skip()
     # triton kernel
-    @triton.jit
+    @triton_metal.jit
     def kernel(X, stride_xm, stride_xk, Y, stride_yk, stride_yn, W, stride_wn, stride_wl, Z, stride_zm, stride_zn,
                BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, BLOCK_K: tl.constexpr, ADD_MATRIX: tl.constexpr,
                ADD_ROWS: tl.constexpr, ADD_COLS: tl.constexpr, INPUT_PRECISION: tl.constexpr, DO_SOFTMAX: tl.constexpr,
@@ -3963,7 +3963,7 @@ def test_scaled_dot(M, N, K, col_a, col_b, rhs_scale, mxfp_type, normal_type, nu
         if mma == 16 and K == 64:
             pytest.skip(f"K == {K} too small for mfma {mma} in scaled_dot")
 
-    @triton.jit
+    @triton_metal.jit
     def dot_scale_kernel(a_base, stride_a0, stride_a1, a_scale, b_base, stride_b0, stride_b1, b_scale, out,
                          BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, BLOCK_K: tl.constexpr, type_a: tl.constexpr,
                          type_b: tl.constexpr):
@@ -3991,7 +3991,7 @@ def test_scaled_dot(M, N, K, col_a, col_b, rhs_scale, mxfp_type, normal_type, nu
         out_ptr = out + tl.arange(0, BLOCK_M)[:, None] * BLOCK_N + tl.arange(0, BLOCK_N)[None, :]
         tl.store(out_ptr, c.to(tl.bfloat16))
 
-    @triton.jit
+    @triton_metal.jit
     def mxfp_upcast_kernel(
         x_ptr,
         scale_ptr,
@@ -4225,7 +4225,7 @@ def test_dot3d(B, num_warps, M, N, K, BLOCK_M, BLOCK_N, in_dtype_str, out_dtype_
     if is_hip():
         # hip does not support tf32 precision, so use ieee for all tests
         input_precision = "ieee"
-        arch = triton.runtime.driver.active.get_current_target().arch
+        arch = triton_metal.runtime.driver.active.get_current_target().arch
         if "gfx11" in arch or "gfx12" in arch:
             if in_dtype_str == "float32":
                 pytest.skip(f"{in_dtype_str} is not supported in WMMA dot, FMA does not support dot3d")
@@ -4237,13 +4237,13 @@ def test_dot3d(B, num_warps, M, N, K, BLOCK_M, BLOCK_N, in_dtype_str, out_dtype_
             pytest.skip("small dots are supported only on HIP at the moment")
 
     if B == 8 and M == 64 and in_dtype_str == "float32" and out_dtype_str == "float32":
-        if not is_interpreter() and triton.runtime.driver.active.utils.get_device_properties(
-                triton.runtime.driver.active.get_current_device())["max_shared_mem"] < 131072:
+        if not is_interpreter() and triton_metal.runtime.driver.active.utils.get_device_properties(
+                triton_metal.runtime.driver.active.get_current_device())["max_shared_mem"] < 131072:
             pytest.skip(
                 "Skipping tests with B = 8, M = 64, in_type = float32, out_type = float32 due to insufficient shared memory (less than 128 KB per SM) on this GPU."
             )
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(
         q_ptr,
         k_ptr,
@@ -4308,8 +4308,8 @@ def test_dot3d(B, num_warps, M, N, K, BLOCK_M, BLOCK_N, in_dtype_str, out_dtype_
     BLOCK_K = K
 
     grid = (
-        triton.cdiv(M, BLOCK_M),
-        triton.cdiv(N, BLOCK_N),
+        triton_metal.cdiv(M, BLOCK_M),
+        triton_metal.cdiv(N, BLOCK_N),
     )
     kernel[grid](
         x_tri,
@@ -4347,7 +4347,7 @@ def test_dot_mulbroadcasted(in_dtype, device):
         if capability[0] < 8:
             pytest.skip("Requires sm >= 80 to run")
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(Z, X, Y, M: tl.constexpr, N: tl.constexpr, K: tl.constexpr, BM: tl.constexpr, BN: tl.constexpr,
                BK: tl.constexpr):
         pidn = tl.program_id(1)
@@ -4399,14 +4399,14 @@ def test_full(dtype_str, shape, device):
         dtype = getattr(torch, dtype_str)
     check_type_supported(dtype, device)  # bfloat16 on cc < 80 will not be tested
 
-    @triton.jit
+    @triton_metal.jit
     def kernel_static(out):
         a = GENERATE_TEST_HERE
         tl.static_assert(a.shape == SHAPE)
         out_ptr = out + tl.arange(0, 128)[:]
         tl.store(out_ptr, a)
 
-    @triton.jit
+    @triton_metal.jit
     def kernel_dynamic(out, val, dtype: tl.constexpr):
         a = tl.full(SHAPE, val, dtype)
         tl.static_assert(a.shape == SHAPE)
@@ -4423,7 +4423,7 @@ def test_full(dtype_str, shape, device):
 
     kernel_dynamic_patched = patch_kernel(kernel_dynamic, {'SHAPE': str(list(shape))})
     out_dynamic = torch.zeros((128), dtype=dtype, device=device)
-    kernel_dynamic_patched[(1, )](out_dynamic, 2, getattr(triton.language, dtype_str))
+    kernel_dynamic_patched[(1, )](out_dynamic, 2, getattr(triton_metal.language, dtype_str))
     assert torch.all(out_dynamic == 2)
 
 
@@ -4432,7 +4432,7 @@ def test_full(dtype_str, shape, device):
                                                 ('float("-nan")', "f32"), (0., "f32"), (5, "i32"), (2**40, "i64")])
 def test_constexpr(literal, dtype_str, device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(out_ptr):
         val = GENERATE_TEST_HERE
         tl.store(out_ptr.to(tl.pointer_type(val.dtype)), val)
@@ -4443,7 +4443,7 @@ def test_constexpr(literal, dtype_str, device):
     assert re.search(r"arith.constant .* : " + dtype_str, h.asm["ttir"]) is not None
 
 
-@triton.jit
+@triton_metal.jit
 def pass_const(a, b, choose_b):
     if choose_b:
         return b
@@ -4456,7 +4456,7 @@ def pass_const(a, b, choose_b):
 @pytest.mark.parametrize("mode", ["direct", "call", "ternary", "if"])
 def test_const(device, choose_const, constexpr, mode):
 
-    @triton.jit(do_not_specialize=["choose_const"])
+    @triton_metal.jit(do_not_specialize=["choose_const"])
     def kernel(in_ptr: tl.const, out, c_out: tl.const, choose_const, n_elems: tl.int32, BLOCK_SIZE: tl.constexpr):
         offsets = tl.arange(0, BLOCK_SIZE)
         mask = offsets < n_elems
@@ -4464,7 +4464,7 @@ def test_const(device, choose_const, constexpr, mode):
         LOSE_TAIL
         tl.store(final_out + offsets, val, mask=mask)
 
-    @triton.jit
+    @triton_metal.jit
     def kernel_constexpr(in_ptr: tl.const, out, c_out: tl.const, choose_const: tl.constexpr, n_elems: tl.int32,
                          BLOCK_SIZE: tl.constexpr):
         offsets = tl.arange(0, BLOCK_SIZE)
@@ -4497,7 +4497,7 @@ def test_const(device, choose_const, constexpr, mode):
 
     expect_fail = (not constexpr and mode != "direct") or choose_const
     if expect_fail:
-        with pytest.raises(triton.CompilationError) as exc_info:
+        with pytest.raises(triton_metal.CompilationError) as exc_info:
             patched_kernel[(1, )](input, output, output, choose_const, SIZE, SIZE)
         if constexpr:
             error = "Cannot store to a constant pointer"
@@ -4522,7 +4522,7 @@ def test_const(device, choose_const, constexpr, mode):
 @pytest.mark.parametrize("dtype_str", ['float32', 'float16'])
 def test_dot_without_load(dtype_str, device):
 
-    @triton.jit
+    @triton_metal.jit
     def _kernel(out):
         a = GENERATE_TEST_HERE
         b = GENERATE_TEST_HERE
@@ -4551,7 +4551,7 @@ def test_arange(start, num_ctas, device):
     BLOCK = 128
     z_tri = torch.empty(BLOCK, dtype=torch.int32, device=device)
 
-    @triton.jit
+    @triton_metal.jit
     def _kernel(z, BLOCK: tl.constexpr, START: tl.constexpr, END: tl.constexpr):
         off = tl.arange(0, BLOCK)
         val = tl.arange(START, END)
@@ -4588,7 +4588,7 @@ def test_masked_load(dtype_str, size, size_diff, other, num_ctas, device):
         input = torch.rand(input_size, dtype=dtype, device=device)
     output = torch.zeros((output_size, ), dtype=dtype, device=device)
 
-    @triton.jit
+    @triton_metal.jit
     def _kernel(in_ptr, out_ptr, in_size: tl.constexpr, out_size: tl.constexpr):
         in_offsets = tl.arange(0, out_size)
         # Load inputs.
@@ -4616,7 +4616,7 @@ def test_masked_load_scalar(num_ctas, mask_val, other_val, device):
     input = torch.full((size, ), input_val, dtype=dtype, device=device)
     output = torch.zeros((size, ), dtype=dtype, device=device)
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(in_ptr, out_ptr, size: tl.constexpr, mask: tl.constexpr, other: tl.constexpr):
         offsets = tl.arange(0, size)
         x = tl.load(in_ptr + offsets, mask=mask, other=other)
@@ -4648,7 +4648,7 @@ def test_masked_load_shared_memory(dtype, device):
     in2 = torch.rand((K, N), dtype=dtype, device=device)
     out = torch.zeros((M, N), dtype=dtype, device=device)
 
-    @triton.jit
+    @triton_metal.jit
     def _kernel(in1_ptr, in2_ptr, output_ptr, in_stride, in2_stride, out_stride, in_numel, in2_numel, out_numel,
                 M: tl.constexpr, N: tl.constexpr, K: tl.constexpr):
 
@@ -4683,7 +4683,7 @@ def test_load_cache_modifier(cache, device):
     src = torch.empty(128, device=device)
     dst = torch.empty(128, device=device)
 
-    @triton.jit
+    @triton_metal.jit
     def _kernel(dst, src, CACHE: tl.constexpr):
         offsets = tl.arange(0, 128)
         x = tl.load(src + offsets, cache_modifier=CACHE)
@@ -4730,7 +4730,7 @@ def test_vectorization(N, num_ctas, device):
     src = torch.randn(block_size, device=device)
     dst = torch.empty(block_size, device=device)
 
-    @triton.jit
+    @triton_metal.jit
     def _kernel(dst, src, N, BLOCK_SIZE: tl.constexpr):
         offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
         x = tl.load(src + offsets, mask=offsets < N)
@@ -4756,7 +4756,7 @@ def test_vectorization_hints(has_hints, device):
     dst = torch.empty(1024, device=device)
     off = torch.zeros(1, device=device, dtype=torch.int32)
 
-    @triton.jit
+    @triton_metal.jit
     def _kernel(dst, src, off, N, BLOCK_SIZE: tl.constexpr, HINT: tl.constexpr):
         offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
         offsets = offsets + tl.load(off)
@@ -4779,7 +4779,7 @@ def test_vectorization_hints(has_hints, device):
 @pytest.mark.interpreter
 def test_assume(device):
 
-    @triton.jit
+    @triton_metal.jit
     def _kernel(out_ptr, N: tl.constexpr, BLOCK_N: tl.constexpr):
         current_size = N - tl.program_id(0) * BLOCK_N
         tl.assume(current_size >= BLOCK_N)
@@ -4811,7 +4811,7 @@ def test_store_cache_modifier(cache, device):
     src = torch.empty(128, device=device)
     dst = torch.empty(128, device=device)
 
-    @triton.jit
+    @triton_metal.jit
     def _kernel(dst, src, CACHE: tl.constexpr):
         offsets = tl.arange(0, 128)
         x = tl.load(src + offsets)
@@ -4875,7 +4875,7 @@ def test_store_eviction_policy(eviction_policy, device):
     src = torch.empty(128, device=device)
     dst = torch.empty(128, device=device)
 
-    @triton.jit
+    @triton_metal.jit
     def _kernel(dst, src, POLICY: tl.constexpr):
         offsets = tl.arange(0, 128)
         x = tl.load(src + offsets)
@@ -4902,7 +4902,7 @@ def test_store_eviction_policy(eviction_policy, device):
 # TODO: can't be local to test_default
 
 
-@triton.jit
+@triton_metal.jit
 def _impl(value=10):
     return value
 
@@ -4913,7 +4913,7 @@ def test_default(device):
     ret0 = torch.zeros(1, dtype=torch.int32, device=device)
     ret1 = torch.zeros(1, dtype=torch.int32, device=device)
 
-    @triton.jit
+    @triton_metal.jit
     def _kernel(ret0, ret1, value=3):
         tl.store(ret0, _impl())
         tl.store(ret1, _impl(value))
@@ -4935,7 +4935,7 @@ def test_default(device):
 @pytest.mark.interpreter
 def test_noop(device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(x):
         pass
 
@@ -4946,7 +4946,7 @@ def test_noop(device):
 @pytest.mark.parametrize("device", ['cuda', 'cpu', 'cpu_pinned'])
 def test_pointer_arguments(device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(x):
         pass
 
@@ -4969,7 +4969,7 @@ def test_value_specialization(value: int, value_type: str, device) -> None:
         cst = '_'.join([k for k, v in specialization.constants.items() if isinstance(k, str) and v == 1])
         return f"kernel_{ty}_{cst}"
 
-    @triton.jit(repr=repr)
+    @triton_metal.jit(repr=repr)
     def kernel(value1, is_one, X):
         pass
 
@@ -4987,7 +4987,7 @@ def test_value_specialization(value: int, value_type: str, device) -> None:
 @pytest.mark.parametrize("value, overflow", [(2**64 - 1, False), (2**64, True), (-2**63, False), (-2**63 - 1, True)])
 def test_value_specialization_overflow(value: int, overflow: bool, device) -> None:
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(VALUE, X):
         pass
 
@@ -5011,7 +5011,7 @@ def test_value_specialization_overflow(value: int, overflow: bool, device) -> No
 @pytest.mark.parametrize("is_rhs_constexpr", [True, False])
 def test_bin_op_constexpr(op, is_lhs_constexpr, is_rhs_constexpr, device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(Z, X, Y):
         x = tl.load(X)
         y = tl.load(Y)
@@ -5045,7 +5045,7 @@ def test_bin_op_constexpr(op, is_lhs_constexpr, is_rhs_constexpr, device):
 @pytest.mark.interpreter
 def test_constexpr_shape(device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(X):
         off = tl.arange(0, 128 + 128)
         tl.store(X + off, off)
@@ -5058,7 +5058,7 @@ def test_constexpr_shape(device):
 @pytest.mark.interpreter
 def test_constexpr_scalar_shape(device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(X, s):
         off = tl.arange(0, 256)
         val = off % (256 // s)
@@ -5077,7 +5077,7 @@ reshape_list = [((64, ), (8, 8)), ((2, 32), (16, 4)), ((512, ), (2, 2, 2, 2, 2, 
 def test_reshape(formats, device):
     in_format, out_format = formats
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(Z, X, out_tuple: tl.constexpr):
         x = tl.load(X_PTR_EXPR)
         z = tl.reshape(x, out_tuple)
@@ -5101,12 +5101,12 @@ def test_reshape(formats, device):
 
 def test_reshape_err(device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel():
         x = tl.arange(0, 8 * 8)
         y = tl.reshape(x, (8 * 4, ))
 
-    with pytest.raises(triton.CompilationError) as exc_info:
+    with pytest.raises(triton_metal.CompilationError) as exc_info:
         kernel[(1, )]()
 
     assert "reshape" in str(exc_info.value)
@@ -5115,13 +5115,13 @@ def test_reshape_err(device):
 @pytest.mark.interpreter
 def test_tma_load_block_shape_err(device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(ptr):
         desc = tl.make_tensor_descriptor(ptr, [128, 128], [128, 1], [1, 2])
         desc.load([0, 0])
 
     input = torch.empty((128, 128), dtype=torch.int32, device=device)
-    errc = triton.CompilationError if not is_interpreter() else InterpreterError
+    errc = triton_metal.CompilationError if not is_interpreter() else InterpreterError
     with pytest.raises(errc) as e:
         kernel[(1, )](input)
 
@@ -5131,13 +5131,13 @@ def test_tma_load_block_shape_err(device):
 @pytest.mark.interpreter
 def test_tma_store_block_shape_err(device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(ptr):
         desc = tl.make_tensor_descriptor(ptr, [128, 128], [128, 1], [8, 4])
         desc.store([0, 0], tl.zeros([8, 4], dtype=tl.int16))
 
     input = torch.empty((128, 128), dtype=torch.int16, device=device)
-    errc = triton.CompilationError if not is_interpreter() else InterpreterError
+    errc = triton_metal.CompilationError if not is_interpreter() else InterpreterError
     with pytest.raises(errc) as e:
         kernel[(1, )](input)
 
@@ -5146,7 +5146,7 @@ def test_tma_store_block_shape_err(device):
 
 def test_trans_reshape(device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(in_base_ptr, out_base_ptr, IN_SHAPE0: tl.constexpr, IN_SHAPE1: tl.constexpr):
 
         in_block_ptr = tl.make_block_ptr(
@@ -5181,17 +5181,17 @@ def test_trans_reshape(device):
 # -------------
 
 
-@triton.jit
+@triton_metal.jit
 def val_multiplier(val, i):
     return val * i
 
 
-@triton.jit(noinline=True)
+@triton_metal.jit(noinline=True)
 def val_multiplier_noinline(val, i):
     return val * i
 
 
-@triton.jit
+@triton_metal.jit
 def vecmul_kernel(ptr, n_elements, rep, type: tl.constexpr):
     pid = tl.program_id(axis=0)
     offsets = pid * 128 + tl.arange(0, 128)
@@ -5210,7 +5210,7 @@ def vecmul_kernel(ptr, n_elements, rep, type: tl.constexpr):
 @pytest.mark.parametrize("num_ctas", num_ctas_list)
 def test_call(type, num_ctas, device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(ptr, n_elements, num1, num2, type: tl.constexpr):
         vecmul_kernel(ptr, n_elements, num1, type)
         vecmul_kernel(ptr, n_elements, num2, type)
@@ -5243,7 +5243,7 @@ def test_call(type, num_ctas, device):
 ])
 def test_if(if_type, device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(Cond, XTrue, XFalse, Ret, IfType: tl.constexpr, BoolVar: tl.constexpr, StaticValue: tl.constexpr):
         pid = tl.program_id(0)
         cond = tl.load(Cond)
@@ -5285,7 +5285,7 @@ def test_if(if_type, device):
 def test_num_warps_pow2(device):
     dst = torch.empty(128, device=device)
 
-    @triton.jit
+    @triton_metal.jit
     def _kernel(dst):
         pass
 
@@ -5300,7 +5300,7 @@ def test_num_warps_pow2(device):
 @pytest.mark.parametrize("func_str", ['sqrt', 'rsqrt', 'exp', 'exp2', 'log', 'log2', 'sin', 'cos'])
 def test_unary_math(func_str, device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(X, Y, BLOCK: tl.constexpr):
         x = tl.load(X + tl.arange(0, BLOCK))
         y = tl.FUNC_STR(x)
@@ -5331,7 +5331,7 @@ def test_inline_asm(num_ctas, device):
     if not is_cuda():
         pytest.skip("test_inline_asm is only supported in CUDA")
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(X, Y, Z, n: tl.constexpr, BLOCK: tl.constexpr):
         x = tl.load(X + tl.arange(0, BLOCK))
         y = tl.load(Y + tl.arange(0, BLOCK))
@@ -5359,7 +5359,7 @@ def test_inline_asm_packed(num_ctas, device):
     if not is_cuda():
         pytest.skip("test_inline_asm is only supported in CUDA")
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(X, Y, BLOCK: tl.constexpr):
         x = tl.load(X + tl.arange(0, BLOCK))
         # shift 4x8bits values together.
@@ -5386,7 +5386,7 @@ def test_inline_asm_with_pointers(num_ctas, device):
     if not is_cuda():
         pytest.skip('test_inline_asm is only supported in CUDA')
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(X, Y, BLOCK: tl.constexpr):
         x_ptrs = X + tl.arange(0, BLOCK)
         y_ptrs = Y + tl.arange(0, BLOCK)
@@ -5411,7 +5411,7 @@ def test_inline_asm_multiple_outputs(device):
     if not is_cuda():
         pytest.skip('test_inline_asm is only supported in CUDA')
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(A, B, C, D, BLOCK: tl.constexpr):
         a = tl.load(A + tl.arange(0, BLOCK))
         b = tl.load(B + tl.arange(0, BLOCK))
@@ -5457,7 +5457,7 @@ def test_inline_asm_packed_multiple_outputs(device):
     if not is_cuda():
         pytest.skip('test_inline_asm is only supported in CUDA')
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(A, B, C, D, BLOCK: tl.constexpr):
         a = tl.load(A + tl.arange(0, BLOCK))
         b = tl.load(B + tl.arange(0, BLOCK))
@@ -5534,7 +5534,7 @@ def test_inline_asm_packed_multiple_outputs(device):
                                         (15, -16, -1), (15, -16, -2), (15, -16, -3), (-18, -22, -1), (22, 18, -1)])
 def test_for_iv(lo, hi, iv, device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(Out, lo, hi, iv: tl.constexpr):
         acc = 0
         acc = acc.to(tl.int64)
@@ -5552,7 +5552,7 @@ def test_for_iv(lo, hi, iv, device):
 @pytest.mark.interpreter
 def test_if_else(device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(Cond, TrueVal, FalseVal, Out):
         if tl.load(Cond):
             val = tl.load(TrueVal)
@@ -5578,7 +5578,7 @@ def test_if_else(device):
 @pytest.mark.parametrize("mode", ["dynamic", "static"])
 def test_if_return(mode, device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(ExitEarly, Out, cond: tl.constexpr, mode: tl.constexpr):
         if mode == "dynamic":
             if tl.load(ExitEarly):
@@ -5602,17 +5602,17 @@ def test_if_return(mode, device):
     assert to_numpy(out)[0] == 1
 
 
-@triton.jit
+@triton_metal.jit
 def add_fn(x):
     return x + 1
 
 
-@triton.jit(noinline=True)
+@triton_metal.jit(noinline=True)
 def add_fn_noinline(x):
     return x + 1
 
 
-@triton.jit
+@triton_metal.jit
 def add_fn_return(x, pid):
     if pid == 0:
         return x + 1
@@ -5620,12 +5620,12 @@ def add_fn_return(x, pid):
         return x + 2
 
 
-@triton.jit
+@triton_metal.jit
 def add_fn_expr(Out, x):
     tl.store(Out, x)
 
 
-@triton.jit
+@triton_metal.jit
 def add_fn_static_cond(x, cond: tl.constexpr):
     if cond == "":
         return x
@@ -5639,7 +5639,7 @@ def add_fn_static_cond(x, cond: tl.constexpr):
     ["attribute", "attribute_jit", "jit", "jit_if", "jit_expr", "jit_static_cond", "jit_noinline", "jit_extern"])
 def test_if_call(call_type, device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(Out, call_type: tl.constexpr):
         pid = tl.program_id(0)
         o = tl.load(Out)
@@ -5708,7 +5708,7 @@ def test_if_call(call_type, device):
 @pytest.mark.parametrize("_cond3", [True, False])
 def test_nested_if_else_return(_cond1, _cond2, _cond3, device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(Cond1, Cond2, Cond3, Val1, Val2, Val3, Out):
         val = 0
         if tl.load(Cond1):
@@ -5747,7 +5747,7 @@ def test_nested_if_else_return(_cond1, _cond2, _cond3, device):
 @pytest.mark.interpreter
 def test_while(device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(InitI, Bound, CutOff, OutI, OutInitI, OutJ):
         init_i = tl.load(InitI)
         curr_i = init_i
@@ -5775,7 +5775,7 @@ def test_while(device):
 @pytest.mark.interpreter
 def test_nested_while(device):
 
-    @triton.jit
+    @triton_metal.jit
     def nested_while(data, countPtr):
         for i in range(10):
             count = tl.load(countPtr)
@@ -5793,7 +5793,7 @@ def test_constexpr_if_return(device):
     # Reproducer for #4883, return statement in an if with a constexpr causes
     # errors when combined with non-trivial control flow graphs
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(Semaphore, Out, total: tl.constexpr):
         if total == 1:
             tl.store(Out, tl.program_id(0))
@@ -5816,7 +5816,7 @@ def test_constexpr_if_return(device):
     assert out.item() >= 0
 
 
-@triton.jit
+@triton_metal.jit
 def return_poison(x):
     a = False
     if a:
@@ -5825,7 +5825,7 @@ def return_poison(x):
 
 def test_poison_return(device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(Out):
         tl.store(Out, return_poison(0))
 
@@ -5846,7 +5846,7 @@ def test_num_threads(device):
     if is_hip():
         pytest.skip("test_num_threads is not supported in HIP")
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(Out):
         num_threads: tl.constexpr = tl.extra.cuda.num_threads()
         offs = tl.arange(0, num_threads)
@@ -5863,7 +5863,7 @@ def test_globaltimer(device):
         pytest.skip("test_globaltimer is not supported in HIP")
     check_cuda_or_hip(device)
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(Out1, Out2):
         start = tl.extra.cuda.globaltimer()
         off = tl.arange(0, 128)
@@ -5884,7 +5884,7 @@ def test_smid(device):
         pytest.skip("test_smid is not supported in HIP")
     check_cuda_or_hip(device)
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(Out):
         tl.store(Out + tl.program_id(0), tl.extra.cuda.smid())
 
@@ -6027,7 +6027,7 @@ def test_convert2d(M, N, src_layout, interm_layout, dst_layout, dtype, device, t
 
     temp_file = tmp_path / "test_convert2d.ttgir"
     temp_file.write_text(ir)
-    kernel = triton.compile(str(temp_file))
+    kernel = triton_metal.compile(str(temp_file))
 
     kernel[(1, 1, 1)](x.data_ptr(), z.data_ptr())
 
@@ -6117,7 +6117,7 @@ def test_local_load_store(M, N, K, dist_layout, shared_layout, device, tmp_path:
 
     temp_file = tmp_path / "test_local_load_store.ttgir"
     temp_file.write_text(ir)
-    kernel = triton.compile(str(temp_file))
+    kernel = triton_metal.compile(str(temp_file))
 
     kernel[(1, 1, 1)](x, z)
     assert torch.equal(z, x)
@@ -6186,7 +6186,7 @@ def test_local_load_store_dot(M, N, dtype, dist_layout, shared_layout, device, t
 
     temp_file = tmp_path / "test_local_load_store_dot.ttgir"
     temp_file.write_text(ir)
-    kernel = triton.compile(str(temp_file))
+    kernel = triton_metal.compile(str(temp_file))
 
     kernel[(1, 1, 1)](x, z)
     assert torch.equal(z, x)
@@ -6249,7 +6249,7 @@ def test_local_load_store_mma(M, N, mma_layout, shared_layout, device, tmp_path:
 
     temp_file = tmp_path / "test_local_load_store_mma.ttgir"
     temp_file.write_text(ir)
-    kernel = triton.compile(str(temp_file))
+    kernel = triton_metal.compile(str(temp_file))
 
     kernel[(1, 1, 1)](x, z)
     assert torch.equal(z, x)
@@ -6402,7 +6402,7 @@ def test_convert_mma2mma(M, N, mma_pair, dtype, device, tmp_path: pathlib.Path):
 
         temp_file = tmp_path / "test_convert_mma2mma.ttgir"
         temp_file.write_text(ir)
-        kernel = triton.compile(str(temp_file))
+        kernel = triton_metal.compile(str(temp_file))
 
         kernel[(1, 1, 1)](x.data_ptr(), z.data_ptr())
 
@@ -6486,7 +6486,7 @@ def test_convert_warp_local(M, N, src_layout, dst_layout, dtype, device, tmp_pat
 
     temp_file = tmp_path / "test_convert_warp_local.ttgir"
     temp_file.write_text(ir)
-    kernel = triton.compile(str(temp_file))
+    kernel = triton_metal.compile(str(temp_file))
 
     kernel[(1, 1, 1)](x.data_ptr(), z.data_ptr())
 
@@ -6496,7 +6496,7 @@ def test_convert_warp_local(M, N, src_layout, dst_layout, dtype, device, tmp_pat
 @pytest.mark.interpreter
 def test_load_scalar_with_mask(device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(Input, Index, Out, N: int):
         index = tl.load(Index)
         scalar = tl.load(Input + index, mask=index < N, other=0)
@@ -6514,7 +6514,7 @@ def test_load_scalar_with_mask(device):
 @pytest.mark.parametrize("dtype_str", ['float16', 'int16'])
 def test_ptx_cast(dtype_str, device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(in_ptr0, out_ptr2, xnumel, rnumel, dtype: tl.constexpr, XBLOCK: tl.constexpr, RBLOCK: tl.constexpr):
         xoffset = tl.program_id(0) * XBLOCK
         xindex = xoffset + tl.arange(0, XBLOCK)[:, None]
@@ -6556,7 +6556,7 @@ def test_ptx_cast(dtype_str, device):
 
 def f8_to_f16(x, dtype):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(Y, X, N, BLOCK_SIZE: tl.constexpr):
         pid = tl.program_id(0)
         offs = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
@@ -6565,13 +6565,13 @@ def f8_to_f16(x, dtype):
         tl.store(Y + offs, x, mask=mask)
 
     ret = torch.empty(x.shape, dtype=torch.float16, device=x.device)
-    grid = lambda META: (triton.cdiv(x.numel(), META['BLOCK_SIZE']), )
+    grid = lambda META: (triton_metal.cdiv(x.numel(), META['BLOCK_SIZE']), )
     dtype = getattr(tl, dtype)
-    kernel[grid](ret, triton.reinterpret(x, dtype), ret.numel(), BLOCK_SIZE=1024)
+    kernel[grid](ret, triton_metal.reinterpret(x, dtype), ret.numel(), BLOCK_SIZE=1024)
     return ret
 
 
-@triton.jit
+@triton_metal.jit
 def matmul_kernel(  #
         a_ptr, b_ptr, c_ptr,  #
         M, N, K,  #
@@ -6631,7 +6631,7 @@ def test_dot_max_num_imprecise_acc(M, N, K, BLOCK_M, BLOCK_N, BLOCK_K, in_type_s
     num_warps = 8
     a = to_triton(A, device=device, dst_type=in_type_str)
     b = to_triton(B, device=device, dst_type=in_type_str)
-    grid = (triton.cdiv(M, BLOCK_M) * triton.cdiv(N, BLOCK_N), 1)
+    grid = (triton_metal.cdiv(M, BLOCK_M) * triton_metal.cdiv(N, BLOCK_N), 1)
     max_num_impressive_acc = low_precision_acc if low_precision_acc <= BLOCK_K else None
     h = matmul_kernel[grid](a, b, C, M, N, K, a.stride(0), a.stride(1), b.stride(0), b.stride(1), C.stride(0),
                             C.stride(1), BLOCK_M, BLOCK_N, BLOCK_K, max_num_impressive_acc, num_warps=num_warps,
@@ -6660,11 +6660,11 @@ def test_dot_max_num_imprecise_acc(M, N, K, BLOCK_M, BLOCK_N, BLOCK_K, in_type_s
 def test_enable_fp_fusion(enable_fp_fusion, default_override, device):
     if is_hip():
         pytest.skip(
-            'test_enable_fp_fusion for HIP currently broken in https://github.com/triton-lang/triton. Use https://github.com/ROCmSoftwarePlatform/triton'
+            'test_enable_fp_fusion for HIP currently broken in https://github.com/triton-lang/triton_metal. Use https://github.com/ROCmSoftwarePlatform/triton'
         )
 
     # Sequential multiply add can be fused by backend
-    @triton.jit
+    @triton_metal.jit
     def mul_add(data):
         ptrs = data + tl.arange(0, 128)
         tl.store(ptrs, tl.load(ptrs) * 1.5 + 1.0)
@@ -6672,7 +6672,7 @@ def test_enable_fp_fusion(enable_fp_fusion, default_override, device):
     data = torch.randn((128, ), device=device, dtype=torch.float32)
     if default_override:
         os.environ["TRITON_DEFAULT_FP_FUSION"] = "1" if enable_fp_fusion else "0"
-        assert triton.knobs.language.default_fp_fusion == enable_fp_fusion
+        assert triton_metal.knobs.language.default_fp_fusion == enable_fp_fusion
         h = mul_add[(1, )](data)
     else:
         h = mul_add[(1, )](data, enable_fp_fusion=enable_fp_fusion)
@@ -6694,7 +6694,7 @@ def test_override_arch(arch, env_var_override, device):
     if not is_cuda():
         pytest.skip('arch only for CUDA')
 
-    @triton.jit
+    @triton_metal.jit
     def simple(data, out):
         in_ptrs = data + tl.arange(0, 128)
         out_ptrs = out + tl.arange(0, 128)
@@ -6724,7 +6724,7 @@ def test_override_arch(arch, env_var_override, device):
 @pytest.mark.parametrize("func", ['minimum', 'maximum', 'clamp'])
 def test_propagate_nan(dtype, propagate_nan, func, device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(A, B, C, propagate_nan: tl.constexpr, func: tl.constexpr):
         if func == 'clamp':
             tl.store(
@@ -6761,7 +6761,7 @@ def test_propagate_nan(dtype, propagate_nan, func, device):
 @pytest.mark.parametrize("dtype", ['float16', 'float32'])
 def test_clamp(dtype, device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(x_ptr, min_ptr, max_ptr, out_ptr, ref_ptr, N, BLOCK_SIZE: tl.constexpr):
 
         off = tl.arange(0, BLOCK_SIZE)
@@ -6797,7 +6797,7 @@ def test_clamp(dtype, device):
 @pytest.mark.parametrize("dtype", ['bfloat16', 'float16', 'float32'])
 def test_clamp_symmetric(dtype, device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(x_ptr, limit_ptr, out_ptr, ref_ptr, N, BLOCK_SIZE: tl.constexpr):
 
         off = tl.arange(0, BLOCK_SIZE)
@@ -6831,7 +6831,7 @@ def test_clamp_symmetric(dtype, device):
 @pytest.mark.interpreter
 def test_static_range(device):
 
-    @triton.jit
+    @triton_metal.jit
     def loop_kernel(Z, N: tl.constexpr, step: tl.constexpr):
         acc = 0
         for i in tl.static_range(0, N, step=step):
@@ -6878,7 +6878,7 @@ def test_tl_range_num_stages(device):
 
 def test_tl_range_fuse():
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(ub):
         for i in tl.range(0, ub, flatten=True):
             for j in tl.range(0, ub):
@@ -6891,7 +6891,7 @@ def test_tl_range_fuse():
 
 def test_tl_range_option_none():
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(ub):
         for i in tl.range(0, ub, num_stages=None, loop_unroll_factor=None):
             print("i", i)
@@ -6901,12 +6901,12 @@ def test_tl_range_option_none():
     assert "loop_unroll_factor" not in compiled_kernel.asm["ttir"]
 
 
-@triton.jit(noinline=True)
+@triton_metal.jit(noinline=True)
 def maxnreg_noinline1(X):
     tl.store(X, 0)
 
 
-@triton.jit(noinline=True)
+@triton_metal.jit(noinline=True)
 def maxnreg_noinline2(X):
     tl.store(X, 0)
 
@@ -6917,7 +6917,7 @@ def test_maxnreg(device):
         pytest.skip('maxnreg only works on CUDA')
 
     # triton kernel
-    @triton.jit
+    @triton_metal.jit
     def kernel(X):
         maxnreg_noinline1(X)
         tl.store(X, 0)
@@ -6940,7 +6940,7 @@ def test_maxnreg(device):
 @pytest.mark.interpreter
 def test_temp_var_in_loop(device):
 
-    @triton.jit
+    @triton_metal.jit
     def temp_in_loop(Z, N: tl.constexpr, BLOCK: tl.constexpr):
         acc = tl.full((BLOCK, ), 0, dtype=tl.int32)
         for i in range(N):
@@ -6977,7 +6977,7 @@ def test_num_programs(device):
     grid = (11, 21, 31)
     input = torch.empty((3, ), dtype=torch.int32, device=device)
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(input):
         num_programs_0 = tl.num_programs(0)
         num_programs_1 = tl.num_programs(1)
@@ -7000,7 +7000,7 @@ def test_math_extern(dtype_str, device):
     if is_interpreter():
         pytest.skip('math_extern does not work in the interpreter mode')
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(
         x_ptr,
         y_ptr,
@@ -7034,7 +7034,7 @@ def test_math_extern(dtype_str, device):
 
 def test_unroll_attr(device):
 
-    @triton.jit
+    @triton_metal.jit
     def _kernel(dst, unroll_factor: tl.constexpr):
         pid = tl.program_id(axis=0)
         for i in tl.range(0, 10, loop_unroll_factor=unroll_factor):
@@ -7053,7 +7053,7 @@ def test_unroll_attr(device):
         check_loop_unroll_count(h.asm["ttir"], 'tt.atomic_rmw', unroll_factor)
 
 
-@triton.jit
+@triton_metal.jit
 def sanitize_add(a, b):
     a64 = a.to(tl.int64)
     b64 = b.to(tl.int64)
@@ -7066,7 +7066,7 @@ def test_side_effectful_reduction(device):
     if device != "cuda":
         pytest.skip()
 
-    @triton.jit(debug=True)
+    @triton_metal.jit(debug=True)
     def sanitize_sum_kernel(Z, X, BLOCK: tl.constexpr):
         vals = tl.load(X + tl.arange(0, BLOCK))
         z = tl.reduce(vals, 0, sanitize_add)
@@ -7087,7 +7087,7 @@ def test_side_effectful_reduction_2d(device, reduce_dim):
     if device != "cuda":
         pytest.skip()
 
-    @triton.jit(debug=True)
+    @triton_metal.jit(debug=True)
     def sanitize_sum_2d_kernel(Z, X, BLOCK_0: tl.constexpr, BLOCK_1: tl.constexpr, reduce_dim: tl.constexpr,
                                NON_REDUCE_DIM: tl.constexpr):
         offsets = tl.arange(0, BLOCK_0)[:, None] * BLOCK_1 + tl.arange(0, BLOCK_1)[None, :]
@@ -7108,7 +7108,7 @@ def test_side_effectful_reduction_2d(device, reduce_dim):
 
 def test_dtype(device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(X):
         dtype_x: tl.constexpr = X.dtype.element_ty
         tl.static_assert(dtype_x == tl.int32)
@@ -7123,7 +7123,7 @@ def test_side_effectful_scan(device):
     if device != "cuda":
         pytest.skip()
 
-    @triton.jit(debug=True)
+    @triton_metal.jit(debug=True)
     def sanitize_cumsum_kernel(Z, X, BLOCK: tl.constexpr):
         vals = tl.load(X + tl.arange(0, BLOCK))
         z = tl.associative_scan(vals, 0, sanitize_add)
@@ -7146,7 +7146,7 @@ def test_side_effectful_scan(device):
 ])
 def test_chained_reductions(in_shape, perm, red_dims, device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(In, Out,  #
                dim_0: tl.constexpr, dim_1: tl.constexpr, dim_2: tl.constexpr, dim_3: tl.constexpr, dim_4: tl.constexpr,
                perm_0: tl.constexpr, perm_1: tl.constexpr, perm_2: tl.constexpr, perm_3: tl.constexpr,
@@ -7169,7 +7169,7 @@ def test_chained_reductions(in_shape, perm, red_dims, device):
     assert torch.all(ref == result)
 
 
-@triton.jit
+@triton_metal.jit
 def gather_test_kernel(src_ptr, idx_ptr, out_ptr, axis: tl.constexpr, src_dim0: tl.constexpr, src_dim1: tl.constexpr,
                        src_stride0: tl.constexpr, src_stride1: tl.constexpr, idx_dim0: tl.constexpr,
                        idx_dim1: tl.constexpr, idx_stride0: tl.constexpr, idx_stride1: tl.constexpr,
@@ -7295,7 +7295,7 @@ def test_gather_warp_shuffle(src_shape, indices_shape, axis, src_layout, indices
     temp_file = tmp_path / "test_warp_gather.ttgir"
     temp_file.write_text(ir)
 
-    kernel = triton.compile(str(temp_file))
+    kernel = triton_metal.compile(str(temp_file))
     assert ("nvvm.shfl.sync.idx" in kernel.asm["llir"]) or ("llvm.amdgcn.ds.bpermute" in kernel.asm["llir"])
 
     kernel[(1, 1, 1)](src, indices, output)
@@ -7303,19 +7303,19 @@ def test_gather_warp_shuffle(src_shape, indices_shape, axis, src_layout, indices
     torch.testing.assert_close(output, ref, rtol=0, atol=0)
 
 
-@triton.jit
+@triton_metal.jit
 def mul_jit_function(x, y):
     return x * y
 
 
-@triton.jit
+@triton_metal.jit
 def apply_binary_op(x, combine_op):
     return combine_op(x, x)
 
 
 def test_jit_function_arg(device):
 
-    @triton.jit
+    @triton_metal.jit
     def square_kernel_jit_function(in_ptr, out_ptr, BLOCK_SIZE: tl.constexpr):
         offsets = tl.arange(0, BLOCK_SIZE)
         in_data = tl.load(in_ptr + offsets)
@@ -7335,7 +7335,7 @@ def test_jit_function_arg(device):
 @pytest.mark.interpreter
 def test_zero_strided_tensors(device):
 
-    @triton.jit
+    @triton_metal.jit
     def _simple_add(
         X,
         stride_x_a,
@@ -7364,9 +7364,9 @@ def test_zero_strided_tensors(device):
 @pytest.mark.interpreter
 def test_aliasing(device):
 
-    @triton.jit
+    @triton_metal.jit
     def aliasing_kernel(buffer, buffer2):
-        triton.language.store(buffer, 1)
+        triton_metal.language.store(buffer, 1)
 
     buffer = torch.zeros(1, device=device)
     aliasing_kernel[(1, )](buffer, buffer)
@@ -7377,7 +7377,7 @@ def test_aliasing(device):
 @pytest.mark.parametrize("dtype", list(dtypes) + ["bfloat16"])
 def test_strided_load(dtype, device):
 
-    @triton.jit
+    @triton_metal.jit
     def take_every_second_element(x_ptr, output_ptr, BLOCK_SIZE: tl.constexpr):
         strided_offsets = tl.arange(0, BLOCK_SIZE) * 2
         linear_offsets = tl.arange(0, BLOCK_SIZE)
@@ -7401,7 +7401,7 @@ def test_strided_load(dtype, device):
 @pytest.mark.parametrize("dtype", list(dtypes) + ["bfloat16"])
 def test_strided_store(dtype, device):
 
-    @triton.jit
+    @triton_metal.jit
     def store_into_every_second(x_ptr, output_ptr, BLOCK_SIZE: tl.constexpr):
         strided_offsets = tl.arange(0, BLOCK_SIZE) * 2
         linear_offsets = tl.arange(0, BLOCK_SIZE)
@@ -7427,7 +7427,7 @@ def test_strided_store(dtype, device):
 @pytest.mark.parametrize("dtype", list(dtypes) + ["bfloat16"])
 def test_indirect_load(dtype, device):
 
-    @triton.jit
+    @triton_metal.jit
     def indirect_load(offset_ptr, x_ptr, output_ptr, SIZE: tl.constexpr):
         linear_offsets = tl.arange(0, SIZE)
         offsets = tl.load(offset_ptr + linear_offsets)
@@ -7449,7 +7449,7 @@ def test_indirect_load(dtype, device):
 @pytest.mark.parametrize("dtype", list(dtypes) + ["bfloat16"])
 def test_indirect_store(dtype, device):
 
-    @triton.jit
+    @triton_metal.jit
     def indirect_store(offset_ptr, x_ptr, output_ptr, SIZE: tl.constexpr):
         linear_offsets = tl.arange(0, SIZE)
         offsets = tl.load(offset_ptr + linear_offsets)
@@ -7471,7 +7471,7 @@ def test_indirect_store(dtype, device):
 @pytest.mark.parametrize("dtype", map(tl.dtype, tl.dtype.SINT_TYPES + tl.dtype.UINT_TYPES + tl.dtype.STANDARD_FP_TYPES))
 def test_dtype_tensor(device, dtype):
 
-    @triton.jit
+    @triton_metal.jit
     def dtype_tensor_kernel(dtype: tl.constexpr):
         tensor = tl.zeros((1, ), dtype)
 
@@ -7481,7 +7481,7 @@ def test_dtype_tensor(device, dtype):
 @pytest.mark.interpreter
 def test_float_tuple():
 
-    @triton.jit
+    @triton_metal.jit
     def _namedtuple_float_tuple_kernel():
         x, y = float('-inf'), float('inf')  # noqa: F841
 
@@ -7491,7 +7491,7 @@ def test_float_tuple():
 @pytest.mark.interpreter
 def test_short_circuiting(device):
 
-    @triton.jit
+    @triton_metal.jit
     def short_circuiting_kernel(x):
         if (x is not None) and hasattr(x, "dtype") and isinstance(
                 x.dtype, tl.pointer_type) and (x.dtype.element_ty == tl.int32) and (tl.load(x) > 42):
@@ -7519,7 +7519,7 @@ def test_short_circuiting(device):
 @pytest.mark.interpreter
 def test_unsplat(device):
 
-    @triton.jit
+    @triton_metal.jit
     def unsplat_kernel(x, explicit: tl.constexpr):
 
         # this is a single-element tensor:
@@ -7545,7 +7545,7 @@ def test_unsplat(device):
 @pytest.mark.interpreter
 def test_tuple_logic():
 
-    @triton.jit
+    @triton_metal.jit
     def tuple_logic_kernel():
 
         # arity-2 BoolOps:

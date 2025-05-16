@@ -3,8 +3,8 @@ import pytest
 import scipy.stats
 import torch
 
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 
 #####################################
 # Reference Philox Implementation
@@ -127,14 +127,14 @@ def test_randint(size, seed, device, dtype, const_seed):
     numpy_dtype = getattr(np, f"u{dtype}")
     config = {'int32': PHILOX_32, 'int64': PHILOX_64}[dtype]
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(X, N, seed):
         pid = tl.program_id(0).to(X.dtype.element_ty)
         offset = pid * BLOCK + tl.arange(0, BLOCK)
         rand = tl.randint(seed, offset)
         tl.store(X + offset, rand, mask=offset < N)
 
-    @triton.jit
+    @triton_metal.jit
     def const_kernel(X, N, seed: tl.constexpr):
         pid = tl.program_id(0).to(X.dtype.element_ty)
         offset = pid * BLOCK + tl.arange(0, BLOCK)
@@ -144,7 +144,7 @@ def test_randint(size, seed, device, dtype, const_seed):
     # triton result
     x = torch.empty(size, dtype=torch_dtype, device=device)
     N = x.numel()
-    grid = (triton.cdiv(N, BLOCK.value), )
+    grid = (triton_metal.cdiv(N, BLOCK.value), )
     if const_seed:
         const_kernel[grid](x, N, seed=seed)
     else:
@@ -167,14 +167,14 @@ def test_randint(size, seed, device, dtype, const_seed):
                                                            for const_seed in [True, False]])
 def test_rand(size, seed, dtype, device, const_seed):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(X, N, seed, dtype: tl.constexpr):
         pid = tl.program_id(0).to(dtype)
         offset = pid * BLOCK + tl.arange(0, BLOCK)
         rand = tl.rand(seed, offset)
         tl.store(X + offset, rand, mask=offset < N)
 
-    @triton.jit
+    @triton_metal.jit
     def const_kernel(X, N, seed: tl.constexpr, dtype: tl.constexpr):
         pid = tl.program_id(0).to(dtype)
         offset = pid * BLOCK + tl.arange(0, BLOCK)
@@ -184,7 +184,7 @@ def test_rand(size, seed, dtype, device, const_seed):
     # triton result
     x = torch.empty(size, dtype=torch.float32, device=device)
     N = x.numel()
-    grid = (triton.cdiv(N, BLOCK.value), )
+    grid = (triton_metal.cdiv(N, BLOCK.value), )
     if const_seed:
         const_kernel[grid](x, N, seed=seed, dtype=getattr(tl, dtype))
     else:
@@ -195,17 +195,17 @@ def test_rand(size, seed, dtype, device, const_seed):
 
 def test_seed_is_int(device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(X, seed):
         offset = tl.arange(0, 1)
         rand = tl.rand(seed, offset)
         tl.store(X + offset, rand)
 
     x = torch.empty(1, dtype=torch.float32, device=device)
-    with pytest.raises(triton.compiler.errors.CompilationError):
+    with pytest.raises(triton_metal.compiler.errors.CompilationError):
         seed0 = torch.zeros(1, dtype=torch.int32, device=device)
         kernel[(1, )](x, seed0)
-    with pytest.raises(triton.compiler.errors.CompilationError):
+    with pytest.raises(triton_metal.compiler.errors.CompilationError):
         seed1 = 2.3
         kernel[(1, )](x, seed1)
 
@@ -221,14 +221,14 @@ def test_seed_is_int(device):
                                                            for const_seed in [True, False]])
 def test_randn(size, seed, dtype, device, const_seed):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(X, N, seed, dtype: tl.constexpr):
         pid = tl.program_id(0).to(dtype)
         offset = pid * BLOCK + tl.arange(0, BLOCK)
         rand = tl.randn(seed, offset)
         tl.store(X + offset, rand, mask=offset < N)
 
-    @triton.jit
+    @triton_metal.jit
     def const_kernel(X, N, seed: tl.constexpr, dtype: tl.constexpr):
         pid = tl.program_id(0).to(dtype)
         offset = pid * BLOCK + tl.arange(0, BLOCK)
@@ -238,7 +238,7 @@ def test_randn(size, seed, dtype, device, const_seed):
     # triton result
     x = torch.empty(size, dtype=torch.float32, device=device)
     N = x.numel()
-    grid = (triton.cdiv(N, BLOCK.value), )
+    grid = (triton_metal.cdiv(N, BLOCK.value), )
     if const_seed:
         const_kernel[grid](x, N, seed=seed, dtype=getattr(tl, dtype))
     else:
@@ -254,7 +254,7 @@ def test_randn(size, seed, dtype, device, const_seed):
 @pytest.mark.parametrize('dtype', ['int32', 'int64'])
 def test_rand_limits(dtype, device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(input, output, n: tl.constexpr):
         idx = tl.arange(0, n)
         x = tl.load(input + idx)

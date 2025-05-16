@@ -7,17 +7,17 @@ import pathlib
 import pytest
 import torch
 
-import triton
-import triton.language as tl
-from triton._internal_testing import is_hip
+import triton_metal
+import triton_metal.language as tl
+from triton_metal._internal_testing import is_hip
 
 
-@triton.jit
+@triton_metal.jit
 def function_0(i):
     return i + 1
 
 
-@triton.jit
+@triton_metal.jit
 def function_1(i):
     i = i + 1
     cond: tl.constexpr = True
@@ -28,39 +28,39 @@ def function_1(i):
     return FN(i)
 
 
-@triton.jit
+@triton_metal.jit
 def function_2(i):
     i = i + 1
     return i
 
 
-@triton.jit
+@triton_metal.jit
 def combine_fn(a, b):
     return COMBINE_OP  # noqa: F821
 
 
-@triton.jit
+@triton_metal.jit
 def kernel(X, i, BLOCK: tl.constexpr):
     i = i + 1
     i = function_1(i)
     tl.store(X, i)
 
 
-@triton.jit(do_not_specialize=["i"])
+@triton_metal.jit(do_not_specialize=["i"])
 def kernel_nospec(X, i, BLOCK: tl.constexpr):
     i = i + 1
     i = function_1(i)
     tl.store(X, i)
 
 
-@triton.jit(do_not_specialize_on_alignment=["i"])
+@triton_metal.jit(do_not_specialize_on_alignment=["i"])
 def kernel_nospec_on_alignment(X, i, BLOCK: tl.constexpr):
     i = i + 1
     i = function_1(i)
     tl.store(X, i)
 
 
-@triton.jit
+@triton_metal.jit
 def kernel_with_combine_fn(X, BLOCK: tl.constexpr):
     i = tl.arange(0, BLOCK)
     i = REDUCE_OR_SCAN(i, 0, combine_fn)  # noqa: F821
@@ -137,8 +137,8 @@ def write_and_load_module(temp_file: pathlib.Path, code, num_extra_lines):
 def test_changed_line_numbers_invalidate_cache(tmp_path: pathlib.Path):
     from textwrap import dedent
     code = dedent("""
-        import triton
-        @triton.jit
+        import triton_metal
+        @triton_metal.jit
         def test_kernel(i):
             i = i + 1
     """)
@@ -159,7 +159,7 @@ def test_reuse(device, fresh_triton_cache):
         nonlocal counter
         counter += 1
 
-    triton.knobs.runtime.jit_cache_hook = inc_counter
+    triton_metal.knobs.runtime.jit_cache_hook = inc_counter
     x = torch.empty(1, dtype=torch.int32, device=device)
     for i in range(10):
         kernel[(1, )](x, 1, BLOCK=1024)
@@ -174,7 +174,7 @@ def test_specialize(mode, device, fresh_triton_cache):
         nonlocal counter
         counter += 1
 
-    triton.knobs.runtime.jit_cache_hook = inc_counter
+    triton_metal.knobs.runtime.jit_cache_hook = inc_counter
     x = torch.empty(1, dtype=torch.int32, device=device)
     function = {'enable': kernel, 'disable': kernel_nospec, 'disable_on_alignment': kernel_nospec_on_alignment}[mode]
     target = {'enable': 3, 'disable': 1, 'disable_on_alignment': 2}[mode]
@@ -185,7 +185,7 @@ def test_specialize(mode, device, fresh_triton_cache):
 
 def test_annotation(device):
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(X, i: tl.int32):
         tl.store(X, i)
 
@@ -205,7 +205,7 @@ GLOBAL_DEFAULT_ARG = 1
 def test_kernel_default_arg(device):
     global GLOBAL_DEFAULT_ARG
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(X, i: tl.constexpr = GLOBAL_DEFAULT_ARG):
         tl.store(X, i)
 
@@ -229,7 +229,7 @@ GLOBAL_VAR = tl.constexpr(1)
 def test_kernel_global_var_change(device):
     global GLOBAL_VAR
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(X):
         tl.store(X, GLOBAL_VAR)
 
@@ -250,7 +250,7 @@ GLOBAL = 42  # noqa
 def test_local_shadows_global():
     global GLOBAL
 
-    @triton.jit
+    @triton_metal.jit
     def kernel():
         _, GLOBAL = 0, 0  # noqa
         a = GLOBAL  # noqa
@@ -269,7 +269,7 @@ CONSTEXPR_GLOBAL = tl.constexpr(42)
 def test_local_does_not_shadow_global():
     global CONSTEXPR_GLOBAL
 
-    @triton.jit
+    @triton_metal.jit
     def kernel():
         a = CONSTEXPR_GLOBAL  # noqa
         _, CONSTEXPR_GLOBAL = 0, 0  # noqa
@@ -291,7 +291,7 @@ def test_local_does_not_shadow_global():
 CONFLICTING_GLOBAL = tl.constexpr(0)
 
 
-@triton.jit
+@triton_metal.jit
 def conflicting_global_inner():
     a = CONFLICTING_GLOBAL  # noqa
 
@@ -299,12 +299,12 @@ def conflicting_global_inner():
 def test_conflicting_global_in_inner_function():
     global CONFLICTING_GLOBAL
 
-    @triton.jit
+    @triton_metal.jit
     def kernel1():
         a = CONFLICTING_GLOBAL  # noqa
         conflicting_global_inner()
 
-    @triton.jit
+    @triton_metal.jit
     def kernel2():
         a = CONFLICTING_GLOBAL  #noqa
         conflicting_global_inner()
@@ -323,7 +323,7 @@ def test_conflicting_global_in_inner_function():
 
 def test_use_builtin():
 
-    @triton.jit
+    @triton_metal.jit
     def kernel():
         a = float(0)  # noqa
 
@@ -334,7 +334,7 @@ def test_use_builtin():
 
 def test_no_cache_module_as_global():
 
-    @triton.jit
+    @triton_metal.jit
     def kernel():
         tl.arange(0, 16)
 
@@ -349,7 +349,7 @@ BUILTIN_AS_GLOBAL = tl.int32
 def test_cache_builtin_as_global():
     global BUILTIN_AS_GLOBAL
 
-    @triton.jit
+    @triton_metal.jit
     def kernel():
         x = BUILTIN_AS_GLOBAL  # noqa
 
@@ -362,14 +362,14 @@ def test_cache_builtin_as_global():
     assert "global variable" in str(e.value).lower()
 
 
-@triton.jit
+@triton_metal.jit
 def no_cache_callable_inner():
     pass
 
 
 def test_no_cache_callable():
 
-    @triton.jit
+    @triton_metal.jit
     def kernel():
         no_cache_callable_inner()
 
@@ -380,7 +380,7 @@ def test_no_cache_callable():
 
 def test_jit_warmup_cache(device) -> None:
 
-    @triton.jit
+    @triton_metal.jit
     def kernel_add(a, b, o, N: tl.constexpr):
         idx = tl.arange(0, N)
         tl.store(o + idx, tl.load(a + idx) + tl.load(b + idx))
@@ -403,7 +403,7 @@ def test_jit_warmup_cache(device) -> None:
 
 def test_jit_debug(device) -> None:
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(tmp):
         tl.device_assert(tl.load(tmp) == 1, "tmp == 1")
 
@@ -418,7 +418,7 @@ def test_jit_debug(device) -> None:
     assert bins[0].asm['ttir'] != bins[1].asm['ttir']
 
 
-@triton.jit
+@triton_metal.jit
 def add_fn(a, b, o, N: tl.constexpr):
     idx = tl.arange(0, N)
     tl.store(o + idx, tl.load(a + idx) + tl.load(b + idx))
@@ -426,7 +426,7 @@ def add_fn(a, b, o, N: tl.constexpr):
 
 def test_jit_noinline(device) -> None:
 
-    @triton.jit
+    @triton_metal.jit
     def kernel_add_device(a, b, o, N: tl.constexpr):
         add_fn(a, b, o, N)
 
@@ -449,7 +449,7 @@ def test_jit_noinline(device) -> None:
 
 def test_memory_leak() -> None:
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(in_ptr0, out_ptr0, xnumel, XBLOCK: tl.constexpr):
         xnumel = 10
         xoffset = tl.program_id(0) * XBLOCK
@@ -462,13 +462,13 @@ def test_memory_leak() -> None:
 
 def test_preload(device, fresh_triton_cache) -> None:
 
-    @triton.jit
+    @triton_metal.jit
     def kernel_add(a, b, o, N: tl.constexpr, type: tl.constexpr):
         idx = tl.arange(0, N)
         tl.device_assert(idx < 32, "idx < 32")
         tl.store(o + idx, tl.load(a + idx) + tl.load(b + idx))
 
-    @triton.jit
+    @triton_metal.jit
     def kernel_sub(a, b, o, N: tl.constexpr, type: tl.constexpr):
         idx = tl.arange(0, N)
         tl.device_assert(idx < 32, "idx < 32")
@@ -483,7 +483,7 @@ def test_preload(device, fresh_triton_cache) -> None:
         nonlocal specialization_data
         specialization_data = kwargs["compile"]["specialization_data"]
 
-    triton.knobs.runtime.jit_cache_hook = cache_hook
+    triton_metal.knobs.runtime.jit_cache_hook = cache_hook
     pre_compile = kernel_add.warmup(torch.float32, torch.float32, torch.float32, 32, tl.float32, grid=(1, ))
     hash = pre_compile.hash
     assert specialization_data is not None
@@ -504,9 +504,9 @@ def test_preload(device, fresh_triton_cache) -> None:
         nonlocal counter
         counter += 1
 
-    triton.knobs.runtime.jit_cache_hook = inc_counter
+    triton_metal.knobs.runtime.jit_cache_hook = inc_counter
     final_kernel = kernel_add.warmup(torch.float32, torch.float32, torch.float32, 32, tl.float32, grid=(1, ))
-    triton.knobs.runtime.jit_cache_hook = None
+    triton_metal.knobs.runtime.jit_cache_hook = None
     assert counter == 0
     assert len(kernel_add.device_caches[device][0]) == 1
     assert final_kernel.hash == hash
@@ -518,7 +518,7 @@ def test_preload(device, fresh_triton_cache) -> None:
 
 def test_hooks(device, fresh_triton_cache) -> None:
 
-    @triton.jit
+    @triton_metal.jit
     def kernel_add(a, b, o, N: tl.constexpr, type: tl.constexpr):
         idx = tl.arange(0, N)
         tl.device_assert(idx < 32, "idx < 32")
@@ -543,8 +543,8 @@ def test_hooks(device, fresh_triton_cache) -> None:
         nonlocal specialization_data_compiled
         specialization_data_compiled = kwargs["compile"]["specialization_data"]
 
-    triton.knobs.runtime.jit_cache_hook = cache_hook
-    triton.knobs.runtime.jit_post_compile_hook = compiled_hook
+    triton_metal.knobs.runtime.jit_cache_hook = cache_hook
+    triton_metal.knobs.runtime.jit_post_compile_hook = compiled_hook
     kernel_add.warmup(torch.float32, torch.float32, torch.float32, 32, tl.float32, grid=(1, ))
     assert specialization_data is not None and specialization_data_compiled == specialization_data
     assert is_warmup is True
@@ -562,7 +562,7 @@ def test_within_2gb(device, fresh_triton_cache) -> None:
             # Set AMDGCN_USE_BUFFER_OPS
             os.environ["AMDGCN_USE_BUFFER_OPS"] = use_buffer_ops
 
-            @triton.jit
+            @triton_metal.jit
             def kernel_add(a):
                 tl.load(a)
 
@@ -575,7 +575,7 @@ def test_within_2gb(device, fresh_triton_cache) -> None:
                     k for k, v in kwargs["compile"]["configs"][0].items() if ["tt.pointer_range", 32] in v
                 ]
 
-            triton.knobs.runtime.jit_cache_hook = cache_hook
+            triton_metal.knobs.runtime.jit_cache_hook = cache_hook
             # In warmup we assume that the pointer range is 32 bits
             kernel_add.warmup(torch.float32, grid=(1, ))
             assert pointer_range_32 == pointer_range
@@ -591,28 +591,28 @@ def test_within_2gb(device, fresh_triton_cache) -> None:
 
 def test_function_arguments(device):
 
-    @triton.jit
+    @triton_metal.jit
     def func1():
         return 1
 
-    @triton.jit
+    @triton_metal.jit
     def func2():
         return 2
 
-    @triton.jit
+    @triton_metal.jit
     def func3(x):
         return x
 
-    @triton.jit
+    @triton_metal.jit
     def func4(x, y):
         return x + y
 
-    @triton.jit
+    @triton_metal.jit
     def kernel(Y, fn: tl.constexpr, fn_args):
         tl.store(Y, fn(*fn_args))
 
-    triton.knobs.runtime.jit_cache_hook = None
-    triton.knobs.runtime.jit_post_compile_hook = None
+    triton_metal.knobs.runtime.jit_cache_hook = None
+    triton_metal.knobs.runtime.jit_post_compile_hook = None
     y = torch.zeros((5, ), dtype=torch.int32, device=device)
     kernel[(1, )](y[0], func1, tuple())
     kernel[(1, )](y[1], func2, tuple())

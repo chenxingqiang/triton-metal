@@ -6,14 +6,11 @@ import os
 import sys
 from enum import Enum
 
-# Add parent directory to path if needed
-current_dir = os.path.dirname(os.path.abspath(__file__))
-if current_dir not in sys.path:
-    sys.path.insert(0, current_dir)
+
 
 # First try to import directly from memory_layout_optimizer
 print("Directly from memory_layout_optimizer:")
-from memory_layout_optimizer import MemoryLayout as MLOMemoryLayout
+from mlx.memory_layout_optimizer import MemoryLayout as MLOMemoryLayout
 print("Items in MLOMemoryLayout:")
 for layout in MLOMemoryLayout:
     print(f"  {layout.name} = {layout.value}")
@@ -21,7 +18,7 @@ for layout in MLOMemoryLayout:
 # Then try to import from metal_memory_manager if available
 try:
     print("\nFrom metal_memory_manager:")
-    from metal_memory_manager import MemoryLayout as MMMemoryLayout
+    from MLX.metal_memory_manager import MemoryLayout as MMMemoryLayout
     print("Items in MMMemoryLayout:")
     for layout in MMMemoryLayout:
         print(f"  {layout.name} = {layout.value}")

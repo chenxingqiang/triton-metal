@@ -4,8 +4,8 @@ import subprocess
 import sys
 from collections import Counter
 
-import triton
-from triton._internal_testing import is_interpreter
+import triton_metal
+from triton_metal._internal_testing import is_interpreter
 
 import pytest
 
@@ -104,7 +104,7 @@ def test_print(func_type: str, data_type: str, device: str):
         for i in range(N):
             expected_lines[f"pid (0, 0, 0) idx ({i:3}) ptr: 0x"] = 1
     elif func_type == "device_print_2d_tensor":
-        warp_size = triton.runtime.driver.active.get_current_target().warp_size
+        warp_size = triton_metal.runtime.driver.active.get_current_target().warp_size
         x_dim = N // warp_size
         y_dim = warp_size
         for x in range(x_dim):

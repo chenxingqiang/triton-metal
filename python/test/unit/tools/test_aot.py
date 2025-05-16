@@ -6,24 +6,24 @@ import tempfile
 
 import numpy as np
 
-import triton
-from triton.backends.compiler import GPUTarget
-from triton.backends.nvidia.driver import include_dir, library_dirs
+import triton_metal
+from triton_metal.backends.compiler import GPUTarget
+from triton_metal.backends.nvidia.driver import include_dir, library_dirs
 
 kernel_utils_src = """
-import triton
+import triton_metal
 
-@triton.jit
+@triton_metal.jit
 def mul(x, y):
     return x * y
 """
 
 kernel_src = """
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 import kernel_utils
 
-@triton.jit
+@triton_metal.jit
 def kernel(C, A, B, M, N, K,
           stride_cm, stride_cn,
           stride_am, stride_ak,
@@ -196,7 +196,7 @@ def write_triton_kernels(dir, src, util_src):
 
 
 def _compile_kernel(dir, signature, kernel_name, out_name, out_path, num_warps, grid, kernel_path):
-    compiler_path = os.path.join(triton.tools.__path__[0], "compile.py")
+    compiler_path = os.path.join(triton_metal.tools.__path__[0], "compile.py")
 
     subprocess.run(
         [
@@ -259,7 +259,7 @@ def compile_aot_kernels(dir, kernel_path, dtype, BM, BN, BK, ha_hb_hints):
 
 
 def link_aot_kernels(dir):
-    linker_path = os.path.join(triton.tools.__path__[0], "link.py")
+    linker_path = os.path.join(triton_metal.tools.__path__[0], "link.py")
 
     # link all desired configs
     h_files = glob.glob(os.path.join(dir, "*.h"))
@@ -436,7 +436,7 @@ module attributes {"ttg.num-warps" = 4 : i32, "ttg.threads-per-warp" = 32 : i32,
         kernel_path = os.path.join(tmp_dir, "empty_kernel.ttgir")
         with open(kernel_path, "w") as fp:
             fp.write(src)
-        k = triton.compile(kernel_path, target=GPUTarget("cuda", 80, 32))
+        k = triton_metal.compile(kernel_path, target=GPUTarget("cuda", 80, 32))
         ptx = k.asm["ptx"]
         assert ".target sm_80" in ptx
         assert ".address_size 64" in ptx

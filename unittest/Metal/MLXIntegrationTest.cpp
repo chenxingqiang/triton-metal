@@ -248,7 +248,7 @@ TEST_F(MLXIntegrationTest, CompileTritonToMLX) {
   
   // Triton kernel code
   std::string triton_code = R"(
-    @triton.jit
+    @triton_metal.jit
     def matmul_kernel(a_ptr, b_ptr, c_ptr, M, N, K):
         pid = tl.program_id(0)
         grid_m = tl.cdiv(M, BLOCK_M)

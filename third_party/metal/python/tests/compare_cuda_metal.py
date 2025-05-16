@@ -383,9 +383,9 @@ def main():
     except Exception as e:
         print(f"Error generating summary table: {e}")
         return 1
-    
+
     print(f"Comparison complete. Results saved to {args.output_dir}")
     return 0
 
 if __name__ == "__main__":
-    sys.exit(main()) 
+    sys.exit(main())

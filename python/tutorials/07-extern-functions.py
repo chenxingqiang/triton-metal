@@ -17,18 +17,18 @@ Triton automatically selects the correct underlying device function to invoke ba
 
 import torch
 
-import triton
-import triton.language as tl
+import triton_metal
+import triton_metal.language as tl
 import inspect
 import os
-from triton.language.extra import libdevice
+from triton_metal.language.extra import libdevice
 
 from pathlib import Path
 
-DEVICE = triton.runtime.driver.active.get_active_torch_device()
+DEVICE = triton_metal.runtime.driver.active.get_active_torch_device()
 
 
-@triton.jit
+@triton_metal.jit
 def asin_kernel(
     x_ptr,
     y_ptr,
@@ -54,9 +54,9 @@ size = 98432
 x = torch.rand(size, device=DEVICE)
 output_triton = torch.zeros(size, device=DEVICE)
 output_torch = torch.asin(x)
-assert x.is_cuda and output_triton.is_cuda
+assert x.is_cuda and output_triton_metal.is_cuda
 n_elements = output_torch.numel()
-grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']), )
+grid = lambda meta: (triton_metal.cdiv(n_elements, meta['BLOCK_SIZE']), )
 asin_kernel[grid](x, output_triton, n_elements, BLOCK_SIZE=1024)
 print(output_torch)
 print(output_triton)
@@ -69,11 +69,11 @@ print(f'The maximum difference between torch and triton is '
 # -------------------------------------
 # We can also customize the libdevice library path by passing the path to the `libdevice` library to the `asin` kernel.
 def is_cuda():
-    return triton.runtime.driver.active.get_current_target().backend == "cuda"
+    return triton_metal.runtime.driver.active.get_current_target().backend == "cuda"
 
 
 def is_hip():
-    return triton.runtime.driver.active.get_current_target().backend == "hip"
+    return triton_metal.runtime.driver.active.get_current_target().backend == "hip"
 
 
 current_file = inspect.getfile(inspect.currentframe())

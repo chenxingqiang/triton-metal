@@ -1,11 +1,11 @@
 import os
 import subprocess
 
-import triton
+import triton_metal
 
 
 def is_hip():
-    return triton.runtime.driver.active.get_current_target().backend == "hip"
+    return triton_metal.runtime.driver.active.get_current_target().backend == "hip"
 
 
 def test_address_sanitizer():

@@ -1,8 +1,8 @@
 import torch
 
-import triton
-import triton.language as tl
-import triton.profiler as proton
+import triton_metal
+import triton_metal.language as tl
+import triton_metal.profiler as proton
 from typing import NamedTuple
 import argparse
 
@@ -36,9 +36,9 @@ def metadata_fn(
     }
 
 
-@triton.autotune(
+@triton_metal.autotune(
     configs=[
-        triton.Config(
+        triton_metal.Config(
             {
                 "BLOCK_SIZE_M": 128,
                 "BLOCK_SIZE_N": 256,
@@ -48,7 +48,7 @@ def metadata_fn(
             num_stages=3,
             num_warps=8,
         ),
-        triton.Config(
+        triton_metal.Config(
             {
                 "BLOCK_SIZE_M": 64,
                 "BLOCK_SIZE_N": 256,
@@ -58,7 +58,7 @@ def metadata_fn(
             num_stages=4,
             num_warps=4,
         ),
-        triton.Config(
+        triton_metal.Config(
             {
                 "BLOCK_SIZE_M": 128,
                 "BLOCK_SIZE_N": 128,
@@ -68,7 +68,7 @@ def metadata_fn(
             num_stages=4,
             num_warps=4,
         ),
-        triton.Config(
+        triton_metal.Config(
             {
                 "BLOCK_SIZE_M": 128,
                 "BLOCK_SIZE_N": 64,
@@ -78,7 +78,7 @@ def metadata_fn(
             num_stages=4,
             num_warps=4,
         ),
-        triton.Config(
+        triton_metal.Config(
             {
                 "BLOCK_SIZE_M": 64,
                 "BLOCK_SIZE_N": 128,
@@ -88,7 +88,7 @@ def metadata_fn(
             num_stages=4,
             num_warps=4,
         ),
-        triton.Config(
+        triton_metal.Config(
             {
                 "BLOCK_SIZE_M": 128,
                 "BLOCK_SIZE_N": 32,
@@ -98,7 +98,7 @@ def metadata_fn(
             num_stages=4,
             num_warps=4,
         ),
-        triton.Config(
+        triton_metal.Config(
             {
                 "BLOCK_SIZE_M": 64,
                 "BLOCK_SIZE_N": 32,
@@ -108,7 +108,7 @@ def metadata_fn(
             num_stages=5,
             num_warps=2,
         ),
-        triton.Config(
+        triton_metal.Config(
             {
                 "BLOCK_SIZE_M": 32,
                 "BLOCK_SIZE_N": 64,
@@ -121,7 +121,7 @@ def metadata_fn(
     ],
     key=["M", "N", "K"],
 )
-@triton.jit(launch_metadata=metadata_fn)
+@triton_metal.jit(launch_metadata=metadata_fn)
 def matmul_kernel(
         # Pointers to matrices
         a_ptr, b_ptr, c_ptr,
@@ -200,7 +200,7 @@ def matmul_kernel(
 
 
 # We can fuse `leaky_relu` by providing it as an `ACTIVATION` meta-parameter in `_matmul`.
-@triton.jit
+@triton_metal.jit
 def leaky_relu(x):
     x = x + 1
     return tl.where(x >= 0, x, 0.01 * x)
@@ -223,7 +223,7 @@ def matmul(a, b, activation=""):
 
     # 1D launch kernel where each block gets its own program.
     def grid(META):
-        return (triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]), )
+        return (triton_metal.cdiv(M, META["BLOCK_SIZE_M"]) * triton_metal.cdiv(N, META["BLOCK_SIZE_N"]), )
 
     matmul_kernel[grid](
         a, b, c,  #
@@ -243,8 +243,8 @@ argparser.add_argument("--cudagraph", action="store_true", default=False)
 args = argparser.parse_args()
 
 
-@triton.testing.perf_report(
-    triton.testing.Benchmark(
+@triton_metal.testing.perf_report(
+    triton_metal.testing.Benchmark(
         x_names=["M", "N", "K"],  # Argument names to use as an x-axis for the plot
         x_vals=[128 * i for i in range(2, 10)],  # Different possible values for `x_name`
         line_arg="provider",  # Argument name whose value corresponds to a different line in the plot
@@ -276,10 +276,10 @@ def benchmark(M, N, K, provider):
                 torch.matmul(a, b)
 
             if args.cudagraph:
-                ms = triton.testing.do_bench_cudagraph(lambda: cublas_matmul(a, b))
+                ms = triton_metal.testing.do_bench_cudagraph(lambda: cublas_matmul(a, b))
                 min_ms = max_ms = ms
             else:
-                ms, min_ms, max_ms = triton.testing.do_bench(lambda: cublas_matmul(a, b), quantiles=quantiles)
+                ms, min_ms, max_ms = triton_metal.testing.do_bench(lambda: cublas_matmul(a, b), quantiles=quantiles)
         if provider == "triton":
 
             def enter_autotune(args, reset_only=False):
@@ -294,10 +294,10 @@ def benchmark(M, N, K, provider):
             matmul_kernel.post_hook = exit_autotune
             with proton.scope("triton"):
                 if args.cudagraph:
-                    ms = triton.testing.do_bench_cudagraph(lambda: matmul(a, b))
+                    ms = triton_metal.testing.do_bench_cudagraph(lambda: matmul(a, b))
                     min_ms = max_ms = ms
                 else:
-                    ms, min_ms, max_ms = triton.testing.do_bench(lambda: matmul(a, b), quantiles=quantiles)
+                    ms, min_ms, max_ms = triton_metal.testing.do_bench(lambda: matmul(a, b), quantiles=quantiles)
 
     def perf(ms):
         return 2 * M * N * K * 1e-12 / (ms * 1e-3)

@@ -2,9 +2,9 @@ import re
 from pathlib import Path
 
 import pytest
-import triton
+import triton_metal
 
-current_target = triton.runtime.driver.active.get_current_target()
+current_target = triton_metal.runtime.driver.active.get_current_target()
 if current_target.arch not in ("gfx950", "gfx942", "gfx90a", "gfx908"):
     pytest.skip(allow_module_level=True)
 
@@ -23,8 +23,8 @@ def get_func_body_asm(amdgcn):
 
 # check there are actually instances of colliding/adjacent fops and mfma without scalarization
 def test_check_not_scalarize():
-    triton.knobs.amd.scalarize_packed_fops = False
-    kernel = triton.compile(str(Path(__file__).parent / "attn_fwd.ttir"), target=current_target)
+    triton_metal.knobs.amd.scalarize_packed_fops = False
+    kernel = triton_metal.compile(str(Path(__file__).parent / "attn_fwd.ttir"), target=current_target)
     llir = kernel.asm["llir"]
     func_body = get_func_body(llir)
 
@@ -63,8 +63,8 @@ def test_check_not_scalarize():
 
 # check scalarization "fixes"
 def test_check_scalarized():
-    triton.knobs.amd.scalarize_packed_fops = True
-    kernel = triton.compile(str(Path(__file__).parent / "attn_fwd.ttir"), target=current_target)
+    triton_metal.knobs.amd.scalarize_packed_fops = True
+    kernel = triton_metal.compile(str(Path(__file__).parent / "attn_fwd.ttir"), target=current_target)
 
     # check the specific IR pattern was rewritten
     llir = kernel.asm["llir"]
