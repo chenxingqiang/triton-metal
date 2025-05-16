@@ -9,7 +9,7 @@ Enhanced Triton with Metal backend for Apple Silicon GPUs.
 pip install triton-metal
 
 # Install from source
-git clone https://github.com/chengxingqiang/triton-metal.git
+git clone https://github.com/chenxingqiang/triton-metal.git
 cd triton-metal
 pip install -e .
 ```
@@ -27,12 +27,12 @@ pip install -e .
 ### Basic Usage
 
 ```python
-import triton_metal
-import triton_metal.language as tl
+import triton
+import triton.language as tl
 
 # By default, Metal backend is auto-selected on Apple Silicon
 # Define a simple matrix multiplication kernel
-@triton_metal.jit
+@triton.jit
 def matmul_kernel(
     # Pointers to matrices
     a_ptr, b_ptr, c_ptr,
@@ -51,8 +51,8 @@ matmul_kernel[grid](a_ptr, b_ptr, c_ptr, M, N, K, BLOCK_M=16, BLOCK_N=16, BLOCK_
 ### Explicit Backend Selection
 
 ```python
-import triton_metal
-from triton_metal.backends import metal
+import triton
+from triton.backends import metal
 
 # Check if Metal is available
 if metal.is_available():

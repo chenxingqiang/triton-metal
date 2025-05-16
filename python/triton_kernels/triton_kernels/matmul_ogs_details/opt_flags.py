@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-import triton_metal
+import triton
 from triton_kernels import target_info
 import torch
 
@@ -62,11 +62,11 @@ def make_default_opt_flags_amd(
     elif tokens_per_expt >= 512 and n >= 2048:
         block_m = 128
     else:
-        block_m = max(32, min(triton_metal.next_power_of_2(tokens_per_expt), 64))
+        block_m = max(32, min(triton.next_power_of_2(tokens_per_expt), 64))
     if routing_data is not None:
         grid_m = routing_data.n_blocks(m, block_m)
     else:
-        grid_m = triton_metal.cdiv(m, block_m)
+        grid_m = triton.cdiv(m, block_m)
     # group_m:
     group_m = 4
     # number of xcds
@@ -142,7 +142,7 @@ def make_default_opt_flags_nvidia(
     elif enforce_bitwise_invariance:
         block_m = 128
     else:
-        block_m = max(64, min(triton_metal.next_power_of_2(tokens_per_expt), 128))
+        block_m = max(64, min(triton.next_power_of_2(tokens_per_expt), 128))
     # TODO: remove when triton is more optimized for H100 MXFP4
     arch = None
     if (
@@ -269,7 +269,7 @@ def make_opt_flags(
     args = [out_dtype, lhs_dtype, rhs_dtype, precision_config, microscaling_ctx, m, n, k,
             routing_data, can_use_persistent_tma, can_use_fused_scatter,
             enforce_bitwise_invariance, has_expensive_epilogue, _opt_flags_constraints]
-    backend = triton_metal.runtime.driver.active.get_current_target().backend
+    backend = triton.runtime.driver.active.get_current_target().backend
     if backend == "hip":
         return make_default_opt_flags_amd(*args)
     if backend == "cuda":

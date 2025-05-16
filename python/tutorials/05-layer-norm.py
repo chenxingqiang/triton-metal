@@ -31,8 +31,8 @@ In doing so, you will learn about:
 
 import torch
 
-import triton_metal
-import triton_metal.language as tl
+import triton
+import triton.language as tl
 
 try:
     # This is https://github.com/NVIDIA/apex, NOT the apex on PyPi, so it
@@ -42,10 +42,10 @@ try:
 except ModuleNotFoundError:
     HAS_APEX = False
 
-DEVICE = triton_metal.runtime.driver.active.get_active_torch_device()
+DEVICE = triton.runtime.driver.active.get_active_torch_device()
 
 
-@triton_metal.jit
+@triton.jit
 def _layer_norm_fwd_fused(
     X,  # pointer to the input
     Y,  # pointer to the output
@@ -129,7 +129,7 @@ def _layer_norm_fwd_fused(
 # In the following implementation, Stage 1 is implemented by the function :code:`_layer_norm_bwd_dx_fused` and Stage 2 is implemented by the function :code:`_layer_norm_bwd_dwdb`.
 
 
-@triton_metal.jit
+@triton.jit
 def _layer_norm_bwd_dx_fused(DX,  # pointer to the input gradient
                              DY,  # pointer to the output gradient
                              DW,  # pointer to the partial sum of weights gradient
@@ -194,7 +194,7 @@ def _layer_norm_bwd_dx_fused(DX,  # pointer to the input gradient
     tl.atomic_xchg(Lock, 0)
 
 
-@triton_metal.jit
+@triton.jit
 def _layer_norm_bwd_dwdb(DW,  # pointer to the partial sum of weights gradient
                          DB,  # pointer to the partial sum of biases gradient
                          FINAL_DW,  # pointer to the weights gradient
@@ -243,7 +243,7 @@ class LayerNorm(torch.autograd.Function):
         rstd = torch.empty((M, ), dtype=torch.float32, device=x.device)
         # Less than 64KB per feature: enqueue fused kernel
         MAX_FUSED_SIZE = 65536 // x.element_size()
-        BLOCK_SIZE = min(MAX_FUSED_SIZE, triton_metal.next_power_of_2(N))
+        BLOCK_SIZE = min(MAX_FUSED_SIZE, triton.next_power_of_2(N))
         if N > BLOCK_SIZE:
             raise RuntimeError("This layer norm doesn't support feature dim >= 64KB.")
         # heuristics for number of warps
@@ -285,7 +285,7 @@ class LayerNorm(torch.autograd.Function):
             BLOCK_SIZE_N=ctx.BLOCK_SIZE,  #
             GROUP_SIZE_M=GROUP_SIZE_M,  #
             num_warps=ctx.num_warps)
-        grid = lambda meta: (triton_metal.cdiv(N, meta['BLOCK_SIZE_N']), )
+        grid = lambda meta: (triton.cdiv(N, meta['BLOCK_SIZE_N']), )
         # accumulate partial sums in separate kernel
         _layer_norm_bwd_dwdb[grid](
             _dw, _db, dw, db, min(GROUP_SIZE_M, M), N,  #
@@ -323,8 +323,8 @@ def test_layer_norm(M, N, dtype, eps=1e-5, device=DEVICE):
     assert torch.allclose(dw_tri, dw_ref, atol=1e-2, rtol=0)
 
 
-@triton_metal.testing.perf_report(
-    triton_metal.testing.Benchmark(
+@triton.testing.perf_report(
+    triton.testing.Benchmark(
         x_names=['N'],
         x_vals=[512 * i for i in range(2, 32)],
         line_arg='provider',
@@ -361,12 +361,12 @@ def bench_layer_norm(M, N, dtype, provider, mode='backward', eps=1e-5, device=DE
     # forward pass
     if mode == 'forward':
         gbps = lambda ms: 2 * x.numel() * x.element_size() * 1e-9 / (ms * 1e-3)
-        ms, min_ms, max_ms = triton_metal.testing.do_bench(y_fwd, quantiles=quantiles, rep=500)
+        ms, min_ms, max_ms = triton.testing.do_bench(y_fwd, quantiles=quantiles, rep=500)
     # backward pass
     if mode == 'backward':
         y = y_fwd()
         gbps = lambda ms: 3 * x.numel() * x.element_size() * 1e-9 / (ms * 1e-3)  # noqa: F811, E704
-        ms, min_ms, max_ms = triton_metal.testing.do_bench(lambda: y.backward(dy, retain_graph=True), quantiles=quantiles,
+        ms, min_ms, max_ms = triton.testing.do_bench(lambda: y.backward(dy, retain_graph=True), quantiles=quantiles,
                                                      grad_to_none=[x], rep=500)
     return gbps(ms), gbps(max_ms), gbps(min_ms)
 

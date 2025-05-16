@@ -1,5 +1,5 @@
 import torch
-import triton_metal
+import triton
 from triton_kernels import target_info
 
 
@@ -7,7 +7,7 @@ def compute_grid_size(routing_data, m, n, block_m, block_n):
     if routing_data is not None:
         grid_m = routing_data.n_blocks(m, block_m)
     else:
-        grid_m = triton_metal.cdiv(m, block_m)
+        grid_m = triton.cdiv(m, block_m)
     grid_n = (n + block_n - 1) // block_n
     return grid_m * grid_n
 
@@ -15,7 +15,7 @@ def compute_grid_size(routing_data, m, n, block_m, block_n):
 def compute_block_n(n: int, arch, precision_config):
     capability = torch.cuda.get_device_capability()[0] if arch is None else int(arch[2:-1])
     # block_n:
-    block_n = max(16, min(128, triton_metal.next_power_of_2(n)))
+    block_n = max(16, min(128, triton.next_power_of_2(n)))
     if capability >= 9 and precision_config.max_num_imprecise_acc is None and n > 128:
         block_n = 256
     return block_n
@@ -34,7 +34,7 @@ def compute_block_k(k: int | None, is_persistent: bool, lhs_dtype, rhs_dtype, mx
     if rhs_width == 0.5 and not has_native_mxfp:
         block_k = 128
     elif k is not None:
-        block_k = max(32, min(triton_metal.next_power_of_2(k), block_k))
+        block_k = max(32, min(triton.next_power_of_2(k), block_k))
 
     if has_native_mxfp and is_persistent and has_mx_weight_scale:
         # Cap block_k to conserve smem to increase num_stages
@@ -48,7 +48,7 @@ def compute_split_k(block_k: int, k: int | None, grid_size: int) -> int:
     split_k = n_sms // grid_size
     if k is not None:
         # avoid split_k for small k
-        num_block_k = triton_metal.cdiv(k, block_k)
+        num_block_k = triton.cdiv(k, block_k)
         split_k = min(split_k, num_block_k // 4)
     split_k = max(split_k, 1)
     return split_k

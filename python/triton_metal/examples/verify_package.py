@@ -23,15 +23,15 @@ def main():
     print(f"Python version: {sys.version}")
     
     # Check that the main package can be imported
-    if not check_module("triton_metal"):
-        print("❌ Failed to import triton_metal package")
+    if not check_module("triton"):
+        print("❌ Failed to import triton package")
         return 1
 
     # Try to import some submodules
     modules_to_check = [
-        "triton_metal.language",
-        "triton_metal.runtime",
-        "triton_metal.backends.metal"
+        "triton.language",
+        "triton.runtime",
+        "triton.backends.metal"
     ]
     
     success = True

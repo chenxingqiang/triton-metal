@@ -17,7 +17,7 @@ python/triton/_C/*.dylib
 python/triton/_C/*.pdb
 python/triton/_C/*.exe
 python/triton/_C/*.ilk
-
+triton_test_env/
 # Backends copied from submodules
 python/triton/backends/*
 !python/triton/backends/__init__.py

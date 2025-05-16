@@ -1,7 +1,7 @@
 from ..numerics import MAX_FINITE_FLOAT8E4B8, MAX_FINITE_FLOAT8E4NV, MAX_FINITE_FLOAT8E5
 from triton_kernels import target_info
-import triton_metal
-import triton_metal.language as tl
+import triton
+import triton.language as tl
 
 # -------------------------------
 # Kernels stuff
@@ -20,7 +20,7 @@ TL_RCP_MAX_FINITE_FLOAT8E4B15 = tl.constexpr(0x3F124925)  # 0x1.24924Ap-1
 TL_RCP_MAX_FINITE_FLOAT16 = tl.constexpr(0x37802008)  # 0x1.004010p-16
 
 
-@triton_metal.jit
+@triton.jit
 def max_finite(dtype):
     if dtype == tl.constexpr(tl.float8e5):
         return TL_MAX_FINITE_FLOAT8E5
@@ -36,7 +36,7 @@ def max_finite(dtype):
         tl.static_assert(tl.constexpr(False), f"{dtype} not supported in flexpoint")
 
 
-@triton_metal.jit
+@triton.jit
 def rcp_max_finite(dtype):
     if dtype == tl.constexpr(tl.float8e5):
         return TL_RCP_MAX_FINITE_FLOAT8E5
@@ -57,7 +57,7 @@ def cuda_capability_geq(major, minor):
     return target_info.cuda_capability_geq(major, minor)
 
 
-@triton_metal.jit
+@triton.jit
 def sm86_min_nan_xorsign_abs_f32(a, b):
     """Wrapper for min.NaN.xorsign.abs.f32 PTX instruction.
 
@@ -82,7 +82,7 @@ def sm86_min_nan_xorsign_abs_f32(a, b):
     )
 
 
-@triton_metal.jit
+@triton.jit
 def sm86_max_nan_xorsign_abs_f32(a, b):
     """Wrapper for max.NaN.xorsign.abs.f32 PTX instruction.
 
@@ -107,25 +107,25 @@ def sm86_max_nan_xorsign_abs_f32(a, b):
     )
 
 
-@triton_metal.jit
+@triton.jit
 def load_scale(scale_ptr):
     return 1.0 if scale_ptr is None else tl.load(scale_ptr)
 
 
-@triton_metal.jit
+@triton.jit
 def flex_to_float(x, scale_ptr):
     scale = load_scale(scale_ptr)
     return x.to(tl.float32) * scale
 
 
-@triton_metal.jit
+@triton.jit
 def clip(x, limit):
     res = tl.minimum(x, limit)
     res = tl.maximum(-limit, res)
     return res
 
 
-@triton_metal.jit
+@triton.jit
 def nan_propagating_absmax_reduce(x, axis=None):
     if cuda_capability_geq(8, 6):
         # abs-max-reduce as floating-point if `max.NaN.xorsign.abs.f32` is supported.
@@ -140,7 +140,7 @@ def nan_propagating_absmax_reduce(x, axis=None):
     return x_absmax
 
 
-@triton_metal.jit
+@triton.jit
 def compute_scale(x, Out):
     x_absmax = nan_propagating_absmax_reduce(tl.ravel(x, can_reorder=True))
 
@@ -151,14 +151,14 @@ def compute_scale(x, Out):
     return tl.fma(x_absmax, RCP_MAX_VALUE.to(tl.float32, bitcast=True), 1.0e-30)
 
 
-@triton_metal.jit
+@triton.jit
 def update_scale(x, scale_ptr, Out) -> None:
     if scale_ptr is not None:
         scale = compute_scale(x, Out)
         tl.atomic_max(scale_ptr, scale, sem="relaxed")
 
 
-@triton_metal.jit
+@triton.jit
 def float_to_flex(
     x,
     expected_scale_ptr_or_val,

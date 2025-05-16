@@ -1,9 +1,9 @@
 from triton_kernels.numerics_details.flexpoint import load_scale, float_to_flex, update_scale
-import triton_metal
-import triton_metal.language as tl
+import triton
+import triton.language as tl
 
 
-@triton_metal.jit
+@triton.jit
 def clip(x, limit, clip_lower: tl.constexpr):
     res = tl.minimum(x, limit)
     if clip_lower:
@@ -11,7 +11,7 @@ def clip(x, limit, clip_lower: tl.constexpr):
     return res
 
 
-@triton_metal.jit
+@triton.jit
 def thread_local_absmax(x, BLOCK_SIZE: tl.constexpr, NUM_THREADS: tl.constexpr):
     return tl.max(tl.reshape(tl.abs(x), [NUM_THREADS, BLOCK_SIZE // NUM_THREADS], can_reorder=True), axis=1)
 
@@ -34,7 +34,7 @@ def swiglu_launch_metadata(grid, kernel, args):
     return ret
 
 
-@triton_metal.jit(repr=swiglu_repr, launch_metadata=swiglu_launch_metadata)
+@triton.jit(repr=swiglu_repr, launch_metadata=swiglu_launch_metadata)
 def _swiglu(Out, OutExpectedScale, OutActualScale, OutChecksumScale, A, AScale, alpha, M, N, stride_am, stride_an,
             stride_outm, stride_outn, limit: tl.constexpr, NTokens, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr,
             EVEN_N: tl.constexpr, M_BLOCKS, N_BLOCKS, flexpoint_saturate_inf: tl.constexpr):

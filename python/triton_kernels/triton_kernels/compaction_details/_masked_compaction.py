@@ -1,8 +1,8 @@
-import triton_metal
-import triton_metal.language as tl
+import triton
+import triton.language as tl
 
 
-@triton_metal.jit
+@triton.jit
 def _masked_compaction(Yv, Yi, BitMask, stride_bm, RetYv, RetYi, sentinel, K: tl.constexpr):
     pid_m = tl.program_id(0)
     yv = tl.load(Yv + pid_m * K + tl.arange(0, K))

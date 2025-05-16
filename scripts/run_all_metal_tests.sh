@@ -19,11 +19,11 @@ export TRITON_BACKEND="metal"
 
 # Verify installation
 echo -e "\n\n===== Verifying Triton-Metal installation ====="
-python -c "import triton_metal; print('Triton-Metal version:', triton_metal.__version__)"
-python -c "from triton_metal.runtime import driver; print('Available backends:', driver.get_available_backends())"
+python -c "import triton; print('Triton-Metal version:', triton.__version__)"
+python -c "from triton.runtime import driver; print('Available backends:', driver.get_available_backends())"
 
 # Make sure Metal backend is available
-if ! python -c "from triton_metal.runtime import driver; assert 'metal' in driver.get_available_backends()"; then
+if ! python -c "from triton.runtime import driver; assert 'metal' in driver.get_available_backends()"; then
   echo "ERROR: Metal backend not available!"
   exit 1
 fi
@@ -62,4 +62,4 @@ else
   echo "No unit tests found, skipping"
 fi
 
-echo -e "\n\n===== All Metal backend tests completed successfully! =====" 
+echo -e "\n\n===== All Metal backend tests completed successfully! ====="

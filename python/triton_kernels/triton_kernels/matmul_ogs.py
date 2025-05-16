@@ -2,7 +2,7 @@ from dataclasses import dataclass
 import itertools
 import sys
 import torch
-import triton_metal
+import triton
 # utilities
 from triton_kernels import target_info
 from triton_kernels.numerics import InFlexData, OutFlexData
@@ -21,7 +21,7 @@ from .specialize import specialize
 @dataclass
 class Epilogue:
     name: str
-    fn: "triton_metal.runtime.jit.JITFunction"
+    fn: "triton.runtime.jit.JITFunction"
     fn_arg_names: tuple[str]
     fn_arg_values_matmul: tuple[object]
     fn_arg_values_finalize: tuple[object]
@@ -268,7 +268,7 @@ def apply_preprocessing_features(x, w, gather_indx, scatter_indx, routing_data, 
         writeback_size = writeback_idxs.shape[0]
         finalize_scatter_idxs = torch.zeros((M // routing_data.n_expts_act + M + 1,), dtype=torch.int32, device=x.device)
         BLOCK_M=256
-        _compute_writeback_idx[(triton_metal.cdiv(M, BLOCK_M),)](
+        _compute_writeback_idx[(triton.cdiv(M, BLOCK_M),)](
             writeback_idxs,
             finalize_scatter_idxs,
             scatter_indx.dst_indx,
@@ -345,8 +345,8 @@ def apply_postprocessing_features(scatter_indx, finalize_scatter_idxs, opt_flags
         def compute_grid(BLOCK_N, num_warps):
             num_pid = target_info.num_sms() * (warps_per_sm // num_warps)
             if M < num_pid or target_info.is_hip():
-                grid_n = triton_metal.cdiv(N, BLOCK_N)
-                grid_m = min(M, max(1, triton_metal.cdiv(num_pid, grid_n)))
+                grid_n = triton.cdiv(N, BLOCK_N)
+                grid_m = min(M, max(1, triton.cdiv(num_pid, grid_n)))
             else:
                 grid_m = min(M, num_pid)
                 grid_n = 1
@@ -373,7 +373,7 @@ def apply_postprocessing_features(scatter_indx, finalize_scatter_idxs, opt_flags
 
         # sort by smallest grid_n so we share compute across a row
         grid, (BLOCK_N, num_warps) = sorted([(compute_grid(*c), c) for c in candidates], key=lambda x: x[0][1])[0]
-        STAGES = 1 if num_warps == 1 else min(triton_metal.cdiv(triton_metal.cdiv(N, BLOCK_N), grid[1]), 5)
+        STAGES = 1 if num_warps == 1 else min(triton.cdiv(triton.cdiv(N, BLOCK_N), grid[1]), 5)
 
         kernels = get_kernels(epilogue)
         kernels._finalize_matmul[grid](
@@ -514,8 +514,8 @@ def matmul_ogs(x, w, bias,
     if not is_input_batched:
         grid_m = routing_data.n_blocks(M, opt_flags.block_m)
     else:
-        grid_m = triton_metal.cdiv(M, opt_flags.block_m)
-    grid_n = triton_metal.cdiv(N, opt_flags.block_n)
+        grid_m = triton.cdiv(M, opt_flags.block_m)
+    grid_n = triton.cdiv(N, opt_flags.block_n)
     assert n_expts_tot == routing_data.n_expts_tot
     assert grid_m > 0
     assert x.dtype == w.dtype or mx_ctx.weight_scale is not None
@@ -528,7 +528,7 @@ def matmul_ogs(x, w, bias,
     memory = apply_allocation(allocation, y)
     # TMA descriptors require a global memory allocation
     if opt_flags.is_persistent:
-        triton_metal.set_allocator(get_per_device_per_stream_alloc_fn(x.device))
+        triton.set_allocator(get_per_device_per_stream_alloc_fn(x.device))
     # Intermediate tensors and postprocess kernels for each situation
     out0, out0_flex = memory["output"], precision_config.flex_ctx.out_data
     if postprocessing_features.finalize:

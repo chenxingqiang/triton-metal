@@ -76,9 +76,9 @@ jobs:
     
     - name: Verify installation
       run: |
-        python -c "import triton_metal; print('Triton-Metal version:', triton_metal.__version__)"
-        python -c "from triton_metal.runtime import driver; print('Available backends:', driver.get_available_backends())"
-        if ! python -c "from triton_metal.runtime import driver; assert 'metal' in driver.get_available_backends()"; then
+        python -c "import triton; print('Triton-Metal version:', triton.__version__)"
+        python -c "from triton.runtime import driver; print('Available backends:', driver.get_available_backends())"
+        if ! python -c "from triton.runtime import driver; assert 'metal' in driver.get_available_backends()"; then
           echo "ERROR: Metal backend not available!"
           exit 1
         fi
@@ -130,10 +130,10 @@ jobs:
         pip install --no-index --find-links=dist/ triton-metal
         
         # Verify the installed wheel
-        python -c "import triton_metal; print('Installed wheel version:', triton_metal.__version__)"
+        python -c "import triton; print('Installed wheel version:', triton.__version__)"
         
         # Verify Metal backend is still available
-        if ! python -c "from triton_metal.runtime import driver; assert 'metal' in driver.get_available_backends(), 'Metal backend not available in wheel'"; then
+        if ! python -c "from triton.runtime import driver; assert 'metal' in driver.get_available_backends(), 'Metal backend not available in wheel'"; then
           echo "ERROR: Metal backend not available in installed wheel!"
           exit 1
         fi

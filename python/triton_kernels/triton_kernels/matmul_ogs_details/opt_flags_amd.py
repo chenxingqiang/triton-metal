@@ -1,5 +1,5 @@
 import torch
-import triton_metal
+import triton
 from triton_kernels.target_info import get_cdna_version
 
 
@@ -13,7 +13,7 @@ def compute_block_nk(n, block_m, grid_m, num_xcds, lhs_dtype, rhs_dtype, microsc
         if n <= 128 and (n & (n - 1)) == 0:
             block_n = n
         else:
-            block_n = max(32, min(256, triton_metal.next_power_of_2(grid_m * n * num_xcds // n_cu)))
+            block_n = max(32, min(256, triton.next_power_of_2(grid_m * n * num_xcds // n_cu)))
     elif block_m > 64:
         block_n = 256
     else:

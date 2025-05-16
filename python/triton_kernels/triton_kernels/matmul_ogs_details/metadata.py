@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 import torch
-import triton_metal
-import triton_metal.language as tl
+import triton
+import triton.language as tl
 
 
 @dataclass
@@ -13,7 +13,7 @@ class ExptData:
     buffer: torch.Tensor
 
 
-@triton_metal.jit
+@triton.jit
 def _matmul_metadata_memset(Hist, n_expts_tot, MDHist, MDTokStarts, MDTileStarts, MDTileInfo, md_n_tiles,
                             BLOCK: tl.constexpr, TILE_DIM: tl.constexpr):
     pid = tl.program_id(0)
@@ -41,7 +41,7 @@ def _matmul_metadata_memset(Hist, n_expts_tot, MDHist, MDTokStarts, MDTileStarts
     tl.store(MDTileInfo + offs, 0xffffffff, mask=offs < md_n_tiles)
 
 
-@triton_metal.jit
+@triton.jit
 def _matmul_metadata_compute(Hist, MDTileStarts, MDTileInfo, BLOCK: tl.constexpr, TILE_DIM: tl.constexpr):
 
     expt_id = tl.program_id(0)
@@ -64,7 +64,7 @@ def compute_metadata(routing_data, n_rows, block_m):
     HIST2_BLOCK_M = 512
     device = routing_data.expt_hist.device
     n_expts_tot = routing_data.n_expts_tot
-    cdiv = triton_metal.cdiv
+    cdiv = triton.cdiv
     if n_rows <= n_expts_tot:
         grid_m = n_rows
     else:

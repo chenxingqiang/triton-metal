@@ -68,15 +68,15 @@ Future updates to this tutorial which support mixed precision block scaled matmu
 import argparse
 
 import torch
-import triton_metal
-import triton_metal.language as tl
-import triton_metal.profiler as proton
-from triton_metal.tools.tensor_descriptor import TensorDescriptor
-from triton_metal.tools.mxfp import MXFP4Tensor, MXScaleTensor
+import triton
+import triton.language as tl
+import triton.profiler as proton
+from triton.tools.tensor_descriptor import TensorDescriptor
+from triton.tools.mxfp import MXFP4Tensor, MXScaleTensor
 
 
 def is_cuda():
-    return triton_metal.runtime.driver.active.get_current_target().backend == "cuda"
+    return triton.runtime.driver.active.get_current_target().backend == "cuda"
 
 
 def supports_block_scaling():
@@ -102,7 +102,7 @@ def _matmul_launch_metadata(grid, kernel, args):
     return ret
 
 
-@triton_metal.jit(launch_metadata=_matmul_launch_metadata)
+@triton.jit(launch_metadata=_matmul_launch_metadata)
 def block_scaled_matmul_kernel(  #
         a_desc, a_scale,  #
         b_desc, b_scale,  #
@@ -204,7 +204,7 @@ def block_scaled_matmul(a_desc, a_scale, b_desc, b_scale, dtype_dst, M, N, K, co
     BLOCK_N = configs["BLOCK_SIZE_N"]
     c_desc = TensorDescriptor.from_tensor(output, [BLOCK_M, BLOCK_N])
 
-    grid = (triton_metal.cdiv(M, BLOCK_M) * triton_metal.cdiv(N, BLOCK_N), 1)
+    grid = (triton.cdiv(M, BLOCK_M) * triton.cdiv(N, BLOCK_N), 1)
     block_scaled_matmul_kernel[grid](a_desc, a_scale, b_desc, b_scale, c_desc, M, N, K, a_scale.stride(0),
                                      a_scale.stride(1), a_scale.stride(2), a_scale.stride(3), dtype_dst,
                                      configs["ELEM_PER_BYTE_A"], configs["ELEM_PER_BYTE_B"], configs["VEC_SIZE"],
@@ -309,7 +309,7 @@ def validate_block_scaled(M, N, K, block_scale_type="nvfp4"):
     if block_scale_type == "mixed":
         # This is needed for TMA with the descriptor created on the device.
         # TMA load for mixed-precision fp4 is supported only by device TMA.
-        triton_metal.set_allocator(alloc_fn)
+        triton.set_allocator(alloc_fn)
 
     a_desc, a_scale, b_desc, b_scale, configs, reference = initialize_block_scaled(M, N, K, block_scale_type,
                                                                                    compute_reference=True)
@@ -336,7 +336,7 @@ def bench_block_scaled(K, block_scale_type="nvfp4", reps=10):
 
 
 def show_profile(profile_name):
-    import triton_metal.profiler.viewer as proton_viewer
+    import triton.profiler.viewer as proton_viewer
     metric_names = ["time/ms"]
     metric_names = ["tflop/s"] + metric_names
     file_name = f"{profile_name}.hatchet"

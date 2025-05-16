@@ -1,8 +1,8 @@
-import triton_metal
-import triton_metal.language as tl
+import triton
+import triton.language as tl
 
 
-@triton_metal.jit
+@triton.jit
 def vpopc(x):
     """
     Vertical popcount
@@ -41,14 +41,14 @@ def vpopc(x):
     return y
 
 
-@triton_metal.jit
+@triton.jit
 def _sum_bitmatrix_memset(Ret, ret_size, BLOCK: tl.constexpr):
     pid = tl.program_id(0)
     offs = pid * BLOCK + tl.arange(0, BLOCK)
     tl.store(Ret + offs, 0, mask=offs < ret_size)
 
 
-@triton_metal.jit
+@triton.jit
 def _sum_bitmatrix_rows(B, shape_bm, stride_bm,  # input bitmatrix
                         Ret, Partials, stride_pm, shape_pn,  # outputs
                         BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
@@ -68,7 +68,7 @@ def _sum_bitmatrix_rows(B, shape_bm, stride_bm,  # input bitmatrix
 
 def sum_bitmatrix_rows(x, out_ret, out_partials, partials_block_size=None):
     assert partials_block_size is not None
-    cdiv = triton_metal.cdiv
+    cdiv = triton.cdiv
     PARTIALS_BLOCK_M = partials_block_size
     BLOCK_N = 32
     MEMSET_BLOCK = 512

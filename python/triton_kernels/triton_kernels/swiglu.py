@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from triton_kernels.numerics import InFlexData, OutFlexData
 import torch
-import triton_metal
+import triton
 from .swiglu_details._swiglu import _swiglu
 from triton_kernels import target_info
 from .matmul_ogs_details.metadata import compute_metadata
@@ -35,15 +35,15 @@ class SwiGLU(torch.autograd.Function):
         num_warps = 4
         kwargs = {'maxnreg': 64} if not target_info.is_hip() else {}
         # launch semi-persistent kernel
-        N_BLOCKS = triton_metal.cdiv(N // 2, BLOCK_N)
+        N_BLOCKS = triton.cdiv(N // 2, BLOCK_N)
         num_sms = target_info.num_sms()
         if routing_data is not None:
             waves_per_sm = 32 if target_info.is_hip() else 128
             num_pid = num_sms * (waves_per_sm // num_warps)
-            M_BLOCKS = max(1, triton_metal.cdiv(num_pid, N_BLOCKS))
+            M_BLOCKS = max(1, triton.cdiv(num_pid, N_BLOCKS))
             grid = (min(M_BLOCKS * N_BLOCKS, 4 * num_sms), )
         else:
-            M_BLOCKS = triton_metal.cdiv(M, BLOCK_M)
+            M_BLOCKS = triton.cdiv(M, BLOCK_M)
             if M_BLOCKS * N_BLOCKS >= 8 * num_sms:
                 grid = (8 * num_sms, )
             else:

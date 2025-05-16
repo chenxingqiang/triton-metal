@@ -16,31 +16,31 @@ Extra Credits:
 import pytest
 import torch
 
-import triton_metal
-import triton_metal.language as tl
+import triton
+import triton.language as tl
 
 try:
-    from triton_metal.tools.tensor_descriptor import TensorDescriptor
+    from triton.tools.tensor_descriptor import TensorDescriptor
     HAS_TENSOR_DESC = True
 except ModuleNotFoundError:
     HAS_TENSOR_DESC = False
 
-DEVICE = triton_metal.runtime.driver.active.get_active_torch_device()
+DEVICE = triton.runtime.driver.active.get_active_torch_device()
 
 
 def is_hip():
-    return triton_metal.runtime.driver.active.get_current_target().backend == "hip"
+    return triton.runtime.driver.active.get_current_target().backend == "hip"
 
 
 def is_cuda():
-    return triton_metal.runtime.driver.active.get_current_target().backend == "cuda"
+    return triton.runtime.driver.active.get_current_target().backend == "cuda"
 
 
 def supports_tma():
     return HAS_TENSOR_DESC and is_cuda() and torch.cuda.get_device_capability()[0] >= 9
 
 
-@triton_metal.jit
+@triton.jit
 def _attn_fwd_inner(acc, l_i, m_i, q,  #
                     K_block_ptr, V_block_ptr,  #
                     start_m, qk_scale,  #
@@ -93,7 +93,7 @@ def _attn_fwd_inner(acc, l_i, m_i, q,  #
     return acc, l_i, m_i
 
 
-@triton_metal.jit
+@triton.jit
 def _attn_fwd_inner_tma(acc, l_i, m_i, q,  #
                         desc_k, desc_v,  #
                         offset_y, dtype: tl.constexpr, start_m, qk_scale,  #
@@ -147,7 +147,7 @@ def _attn_fwd_inner_tma(acc, l_i, m_i, q,  #
 # the code below and commenting out the equivalent parameters is convenient for
 # re-tuning.
 configs = [
-    triton_metal.Config({'BLOCK_M': BM, 'BLOCK_N': BN}, num_stages=s, num_warps=w) \
+    triton.Config({'BLOCK_M': BM, 'BLOCK_N': BN}, num_stages=s, num_warps=w) \
     for BM in [64, 128]\
     for BN in [32, 64]\
     for s in ([1] if is_hip() else [3, 4, 7])\
@@ -163,8 +163,8 @@ def keep(conf):
     return True
 
 
-@triton_metal.autotune(list(filter(keep, configs)), key=["N_CTX", "HEAD_DIM"])
-@triton_metal.jit
+@triton.autotune(list(filter(keep, configs)), key=["N_CTX", "HEAD_DIM"])
+@triton.jit
 def _attn_fwd(Q, K, V, sm_scale, M, Out,  #
               stride_qz, stride_qh, stride_qm, stride_qk,  #
               stride_kz, stride_kh, stride_kn, stride_kk,  #
@@ -269,7 +269,7 @@ def _tma_pre_hook(nargs):
 # the code below and commenting out the equivalent parameters is convenient for
 # re-tuning.
 configs_tma = [
-    triton_metal.Config({'BLOCK_M': BM, 'BLOCK_N': BN}, num_stages=s, num_warps=w, pre_hook=_tma_pre_hook) \
+    triton.Config({'BLOCK_M': BM, 'BLOCK_N': BN}, num_stages=s, num_warps=w, pre_hook=_tma_pre_hook) \
     for BM in [64, 128, 256]\
     for BN in [64, 128]\
     for s in [3, 4, 5]\
@@ -285,9 +285,9 @@ def keep_tma(conf):
     return True
 
 
-@triton_metal.autotune(configs=list(filter(keep_tma, configs_tma)),
+@triton.autotune(configs=list(filter(keep_tma, configs_tma)),
                  key=["N_CTX", "HEAD_DIM", "FP8_OUTPUT", "warp_specialize"])
-@triton_metal.jit
+@triton.jit
 def _attn_fwd_tma(sm_scale, M,  #
                   Z, H, desc_q, desc_k, desc_v, desc_o, N_CTX,  #
                   HEAD_DIM: tl.constexpr,  #
@@ -346,7 +346,7 @@ def _attn_fwd_tma(sm_scale, M,  #
     desc_o.store([qo_offset_y, 0], acc.to(dtype))
 
 
-@triton_metal.jit
+@triton.jit
 def _attn_bwd_preprocess(O, DO,  #
                          Delta,  #
                          Z, H, N_CTX,  #
@@ -364,7 +364,7 @@ def _attn_bwd_preprocess(O, DO,  #
 
 
 # The main inner-loop logic for computing dK and dV.
-@triton_metal.jit
+@triton.jit
 def _attn_bwd_dkdv(dk, dv,  #
                    Q, k, v, sm_scale,  #
                    DO,  #
@@ -417,7 +417,7 @@ def _attn_bwd_dkdv(dk, dv,  #
 
 
 # the main inner-loop logic for computing dQ
-@triton_metal.jit
+@triton.jit
 def _attn_bwd_dq(dq, q, K, V,  #
                  do, m, D,
                  # shared by Q/K/V/DO.
@@ -464,7 +464,7 @@ def _attn_bwd_dq(dq, q, K, V,  #
     return dq
 
 
-@triton_metal.jit
+@triton.jit
 def _attn_bwd(Q, K, V, sm_scale,  #
               DO,  #
               DQ, DK, DV,  #
@@ -625,7 +625,7 @@ class _attention(torch.autograd.Function):
             desc_o = TensorDescriptor(o, shape=[y_dim, HEAD_DIM_K], strides=[HEAD_DIM, 1], block_shape=dummy_block)
 
             def grid(META):
-                return (triton_metal.cdiv(q.shape[2], META["BLOCK_M"]), q.shape[0] * q.shape[1], 1)
+                return (triton.cdiv(q.shape[2], META["BLOCK_M"]), q.shape[0] * q.shape[1], 1)
 
             ctx.grid = grid
             _attn_fwd_tma[grid](
@@ -639,7 +639,7 @@ class _attention(torch.autograd.Function):
                 warp_specialize=warp_specialize,  #
                 **extra_kern_args)
         else:
-            grid = lambda args: (triton_metal.cdiv(q.shape[2], args["BLOCK_M"]), q.shape[0] * q.shape[1], 1)
+            grid = lambda args: (triton.cdiv(q.shape[2], args["BLOCK_M"]), q.shape[0] * q.shape[1], 1)
             ctx.grid = grid
             _attn_fwd[grid](
                 q, k, v, sm_scale, M, o,  #
@@ -737,7 +737,7 @@ def test_op(Z, H, N_CTX, HEAD_DIM, causal, dtype=torch.float16):
     rtol = 0.0
     # Relative tolerance workaround for known hardware limitation of CDNA2 GPU.
     # For details see https://pytorch.org/docs/stable/notes/numerical_accuracy.html#reduced-precision-fp16-and-bf16-gemms-and-convolutions-on-amd-instinct-mi200-devices
-    if torch.version.hip is not None and triton_metal.runtime.driver.active.get_current_target().arch == "gfx90a":
+    if torch.version.hip is not None and triton.runtime.driver.active.get_current_target().arch == "gfx90a":
         rtol = 1e-2
     torch.testing.assert_close(ref_dv, tri_dv, atol=1e-2, rtol=rtol)
     torch.testing.assert_close(ref_dk, tri_dk, atol=1e-2, rtol=rtol)
@@ -761,7 +761,7 @@ for mode in ["fwd", "bwd"]:
             if mode == "bwd" and not causal:
                 continue
             configs.append(
-                triton_metal.testing.Benchmark(
+                triton.testing.Benchmark(
                     x_names=["N_CTX"],
                     x_vals=[2**i for i in range(10, 15)],
                     line_arg="provider",
@@ -784,7 +784,7 @@ for mode in ["fwd", "bwd"]:
                 ))
 
 
-@triton_metal.testing.perf_report(configs)
+@triton.testing.perf_report(configs)
 def bench_flash_attention(BATCH, H, N_CTX, HEAD_DIM, causal, warp_specialize, mode, provider, device=DEVICE):
     assert mode in ["fwd", "bwd"]
     dtype = torch.float16
@@ -804,7 +804,7 @@ def bench_flash_attention(BATCH, H, N_CTX, HEAD_DIM, causal, warp_specialize, mo
             o = fn()
             do = torch.randn_like(o)
             fn = lambda: o.backward(do, retain_graph=True)
-        ms = triton_metal.testing.do_bench(fn)
+        ms = triton.testing.do_bench(fn)
 
     if provider == "flash":
         qkv = torch.randn((BATCH, N_CTX, 3, H, HEAD_DIM), dtype=dtype, device=device, requires_grad=True)
@@ -813,7 +813,7 @@ def bench_flash_attention(BATCH, H, N_CTX, HEAD_DIM, causal, warp_specialize, mo
             o = fn()
             do = torch.randn_like(o)
             fn = lambda: o.backward(do, retain_graph=True)
-        ms = triton_metal.testing.do_bench(fn)
+        ms = triton.testing.do_bench(fn)
     flops_per_matmul = 2.0 * BATCH * H * N_CTX * N_CTX * HEAD_DIM
     total_flops = 2 * flops_per_matmul
     if causal:

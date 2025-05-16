@@ -1,9 +1,9 @@
 from pathlib import Path
 import matplotlib.pyplot as plt
 import json
-import triton_metal.profiler as proton
+import triton.profiler as proton
 import torch
-import triton_metal_kernels.swiglu
+import triton_kernels.swiglu
 from triton_kernels.numerics_details.mxfp import downcast_to_mxfp
 from triton_kernels.matmul_ogs import MicroscalingCtx, matmul_ogs, PrecisionConfig, FlexCtx
 from triton_kernels.numerics import InFlexData
@@ -12,7 +12,7 @@ from triton_kernels.target_info import is_hip, get_cdna_version
 from dataclasses import dataclass
 
 if torch.cuda.is_available() and not is_hip():
-    from triton_metal._C.libtriton import nvidia
+    from triton._C.libtriton import nvidia
     cublas_workspace = torch.empty(32 * 1024 * 1024, device="cuda", dtype=torch.uint8)
     cublas = nvidia.cublas.CublasLt(cublas_workspace)
 else:

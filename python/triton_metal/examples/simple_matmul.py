@@ -7,10 +7,10 @@ kernel using the Triton-Metal package on Apple Silicon GPUs.
 """
 
 import numpy as np
-import triton_metal
-import triton_metal.language as tl
+import triton
+import triton.language as tl
 
-@triton_metal.jit
+@triton.jit
 def matmul_kernel(
     # Pointers to the matrices
     a_ptr, b_ptr, c_ptr,

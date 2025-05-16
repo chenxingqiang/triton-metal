@@ -23,16 +23,16 @@ import argparse
 import itertools
 
 import torch
-import triton_metal
-import triton_metal.language as tl
-import triton_metal.profiler as proton
-from triton_metal.tools.tensor_descriptor import TensorDescriptor
+import triton
+import triton.language as tl
+import triton.profiler as proton
+from triton.tools.tensor_descriptor import TensorDescriptor
 from contextlib import contextmanager
 
 from typing import Optional
 
 if torch.cuda.is_available():
-    from triton_metal._C.libtriton import nvidia
+    from triton._C.libtriton import nvidia
     cublas_workspace = torch.empty(32 * 1024 * 1024, device="cuda", dtype=torch.uint8)
     cublas = nvidia.cublas.CublasLt(cublas_workspace)
 else:
@@ -40,7 +40,7 @@ else:
 
 
 def is_cuda():
-    return triton_metal.runtime.driver.active.get_current_target().backend == "cuda"
+    return triton.runtime.driver.active.get_current_target().backend == "cuda"
 
 
 def supports_tma():
@@ -66,13 +66,13 @@ def _matmul_launch_metadata(grid, kernel, args):
 
 
 HAS_TENSOR_DESC = supports_tma() and hasattr(tl, "make_tensor_descriptor")
-HAS_HOST_TENSOR_DESC = supports_tma() and hasattr(triton_metal.tools.tensor_descriptor, "TensorDescriptor")
+HAS_HOST_TENSOR_DESC = supports_tma() and hasattr(triton.tools.tensor_descriptor, "TensorDescriptor")
 HAS_WARP_SPECIALIZE = supports_ws() and HAS_TENSOR_DESC
 
 
 def matmul_get_configs(pre_hook=None):
     return [
-        triton_metal.Config({'BLOCK_SIZE_M': BM, 'BLOCK_SIZE_N': BN, "BLOCK_SIZE_K" : BK, "GROUP_SIZE_M" : 8}, num_stages=s, num_warps=w, pre_hook=pre_hook) \
+        triton.Config({'BLOCK_SIZE_M': BM, 'BLOCK_SIZE_N': BN, "BLOCK_SIZE_K" : BK, "GROUP_SIZE_M" : 8}, num_stages=s, num_warps=w, pre_hook=pre_hook) \
         for BM in [128] \
         for BN in [128, 256] \
         for BK in [64,128] \
@@ -81,11 +81,11 @@ def matmul_get_configs(pre_hook=None):
     ]
 
 
-@triton_metal.autotune(
+@triton.autotune(
     configs=matmul_get_configs(),
     key=["M", "N", "K"],
 )
-@triton_metal.jit(launch_metadata=_matmul_launch_metadata)
+@triton.jit(launch_metadata=_matmul_launch_metadata)
 def matmul_kernel(a_ptr, b_ptr, c_ptr,  #
                   M, N, K,  #
                   stride_am, stride_ak,  #
@@ -151,7 +151,7 @@ def matmul(a, b):
 
     c = torch.empty((M, N), device=a.device, dtype=dtype)
     # 1D launch kernel where each block gets its own program.
-    grid = lambda META: (triton_metal.cdiv(M, META["BLOCK_SIZE_M"]) * triton_metal.cdiv(N, META["BLOCK_SIZE_N"]), )
+    grid = lambda META: (triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]), )
     matmul_kernel[grid](
         a, b, c,  #
         M, N, K,  #
@@ -175,11 +175,11 @@ def matmul_tma_set_block_size_hook(nargs):
         nargs["c_desc"].block_shape = [BLOCK_M, BLOCK_N]
 
 
-@triton_metal.autotune(
+@triton.autotune(
     configs=matmul_get_configs(pre_hook=matmul_tma_set_block_size_hook),
     key=["M", "N", "K", "WARP_SPECIALIZE"],
 )
-@triton_metal.jit(launch_metadata=_matmul_launch_metadata)
+@triton.jit(launch_metadata=_matmul_launch_metadata)
 def matmul_kernel_tma(a_desc, b_desc, c_desc,  #
                       M, N, K,  #
                       BLOCK_SIZE_M: tl.constexpr,  #
@@ -241,7 +241,7 @@ def matmul_tma(a, b, warp_specialize: bool):
     def grid(META):
         BLOCK_M = META["BLOCK_SIZE_M"]
         BLOCK_N = META["BLOCK_SIZE_N"]
-        return (triton_metal.cdiv(M, BLOCK_M) * triton_metal.cdiv(N, BLOCK_N), )
+        return (triton.cdiv(M, BLOCK_M) * triton.cdiv(N, BLOCK_N), )
 
     matmul_kernel_tma[grid](
         a_desc, b_desc, c_desc,  #
@@ -252,7 +252,7 @@ def matmul_tma(a, b, warp_specialize: bool):
     return c
 
 
-@triton_metal.jit
+@triton.jit
 def _compute_pid(tile_id, num_pid_in_group, num_pid_m, GROUP_SIZE_M, NUM_SMS):
     group_id = tile_id // num_pid_in_group
     first_pid_m = group_id * GROUP_SIZE_M
@@ -262,11 +262,11 @@ def _compute_pid(tile_id, num_pid_in_group, num_pid_m, GROUP_SIZE_M, NUM_SMS):
     return pid_m, pid_n
 
 
-@triton_metal.autotune(
+@triton.autotune(
     configs=matmul_get_configs(),
     key=["M", "N", "K"],
 )
-@triton_metal.jit(launch_metadata=_matmul_launch_metadata)
+@triton.jit(launch_metadata=_matmul_launch_metadata)
 def matmul_kernel_persistent(a_ptr, b_ptr, c_ptr,  #
                              M, N, K,  #
                              stride_am, stride_ak,  #
@@ -336,7 +336,7 @@ def matmul_persistent(a, b):
     # Allocates output.
     c = torch.empty((M, N), device=a.device, dtype=dtype)
     # 1D launch kernel where each block gets its own program.
-    grid = lambda META: (min(NUM_SMS, triton_metal.cdiv(M, META["BLOCK_SIZE_M"]) * triton_metal.cdiv(N, META["BLOCK_SIZE_N"])), )
+    grid = lambda META: (min(NUM_SMS, triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"])), )
     matmul_kernel_persistent[grid](
         a, b, c,  #
         M, N, K,  #
@@ -350,7 +350,7 @@ def matmul_persistent(a, b):
 
 def matmul_tma_persistent_get_configs(pre_hook=None):
     return [
-        triton_metal.Config(
+        triton.Config(
             {
                 'BLOCK_SIZE_M': BM, 'BLOCK_SIZE_N': BN, "BLOCK_SIZE_K": BK, "GROUP_SIZE_M": 8, "EPILOGUE_SUBTILE":
                 SUBTILE
@@ -364,11 +364,11 @@ def matmul_tma_persistent_get_configs(pre_hook=None):
     ]
 
 
-@triton_metal.autotune(
+@triton.autotune(
     configs=matmul_tma_persistent_get_configs(pre_hook=matmul_tma_set_block_size_hook),
     key=["M", "N", "K", "WARP_SPECIALIZE"],
 )
-@triton_metal.jit(launch_metadata=_matmul_launch_metadata)
+@triton.jit(launch_metadata=_matmul_launch_metadata)
 def matmul_kernel_tma_persistent(a_desc, b_desc, c_desc,  #
                                  M, N, K,  #
                                  BLOCK_SIZE_M: tl.constexpr,  #
@@ -452,7 +452,7 @@ def matmul_tma_persistent(a, b, warp_specialize: bool):
         BLOCK_N = META["BLOCK_SIZE_N"]
         return (min(
             NUM_SMS,
-            triton_metal.cdiv(M, BLOCK_M) * triton_metal.cdiv(N, BLOCK_N),
+            triton.cdiv(M, BLOCK_M) * triton.cdiv(N, BLOCK_N),
         ), )
 
     matmul_kernel_tma_persistent[grid](
@@ -465,11 +465,11 @@ def matmul_tma_persistent(a, b, warp_specialize: bool):
     return c
 
 
-@triton_metal.autotune(
+@triton.autotune(
     configs=matmul_tma_persistent_get_configs(),
     key=["M", "N", "K", "WARP_SPECIALIZE"],
 )
-@triton_metal.jit(launch_metadata=_matmul_launch_metadata)
+@triton.jit(launch_metadata=_matmul_launch_metadata)
 def matmul_kernel_descriptor_persistent(a_ptr, b_ptr, c_ptr,  #
                                         M, N, K,  #
                                         BLOCK_SIZE_M: tl.constexpr,  #
@@ -558,9 +558,9 @@ def matmul_descriptor_persistent(a, b, warp_specialize: bool):
     def alloc_fn(size: int, alignment: int, stream: Optional[int]):
         return torch.empty(size, device="cuda", dtype=torch.int8)
 
-    triton_metal.set_allocator(alloc_fn)
+    triton.set_allocator(alloc_fn)
 
-    grid = lambda META: (min(NUM_SMS, triton_metal.cdiv(M, META["BLOCK_SIZE_M"]) * triton_metal.cdiv(N, META["BLOCK_SIZE_N"])), )
+    grid = lambda META: (min(NUM_SMS, triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"])), )
     matmul_kernel_descriptor_persistent[grid](
         a, b, c,  #
         M, N, K,  #
@@ -677,7 +677,7 @@ def validate(M, N, K, dtype):
 
 
 def show_profile(precision, profile_name):
-    import triton_metal.profiler.viewer as proton_viewer
+    import triton.profiler.viewer as proton_viewer
     metric_names = ["time/ms"]
     if precision == 'fp8':
         metric_names = ["tflop8/s"] + metric_names

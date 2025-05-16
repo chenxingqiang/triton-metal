@@ -1,5 +1,5 @@
-import triton_metal
-import triton_metal.language as tl
+import triton
+import triton.language as tl
 from triton_kernels.numerics_details.flexpoint import float_to_flex, load_scale, update_scale
 from triton_kernels.target_info import cuda_capability_geq as _cuda_capability_geq
 from triton_kernels.target_info import is_hip as _is_hip
@@ -29,7 +29,7 @@ def _permute_to_end_order(n: int, axis: int):
     return order[:axis] + order[(axis + 1):] + (axis, )
 
 
-@triton_metal.jit
+@triton.jit
 def permute_to_end(x, axis: tl.constexpr):
     """
     Permutes `x` so that `axis` is the last axis.
@@ -38,7 +38,7 @@ def permute_to_end(x, axis: tl.constexpr):
     return tl.permute(x, _permute_to_end_order(N, axis).value)
 
 
-@triton_metal.jit
+@triton.jit
 def split_n(x, N: tl.constexpr):
     """
     Given `x`, a tensor of shape AxB...x2x2...x2, split it N times.
@@ -53,7 +53,7 @@ def split_n(x, N: tl.constexpr):
     return xs
 
 
-@triton_metal.jit
+@triton.jit
 def thread_local_absmax(x, BLOCK_SIZE: tl.constexpr = None, NUM_THREADS: tl.constexpr = None):
     N: tl.constexpr = tl.extra.cuda.num_threads() if NUM_THREADS is None else NUM_THREADS
     BS: tl.constexpr = x.numel if BLOCK_SIZE is None else BLOCK_SIZE
@@ -137,7 +137,7 @@ def _accumulate_f16_into_f32_and_track_absmax_ptx(n_inputs: int, src_type: str, 
     return f"{{{ptx}}}"
 
 
-@triton_metal.jit
+@triton.jit
 def _mixed_precision_accumulate_and_track_absmax(acc, x, axis: tl.constexpr, absmax_reg_name: tl.constexpr = None):
     """Given an fp8/bf16/fp16 tensor, accumulate into `acc` along `axis`.
     Values are first converted to bf16/fp16, packed into 32-bit registers, and then accumulated using
@@ -183,7 +183,7 @@ def _finalize_matmul_repr(specialization):
     return f"_finalize_matmul{suffix}_{signature['A'][1:]}"
 
 
-@triton_metal.jit(repr=_finalize_matmul_repr, launch_metadata=_finalize_matmul_launch_metadata)
+@triton.jit(repr=_finalize_matmul_repr, launch_metadata=_finalize_matmul_launch_metadata)
 def _finalize_matmul(
     Out,
     OutExpectedScale,

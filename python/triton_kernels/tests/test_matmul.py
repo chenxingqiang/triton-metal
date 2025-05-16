@@ -6,7 +6,7 @@ from typing import Union
 # routing utilities
 from triton_kernels.routing import routing
 # matmul utilities
-import triton_metal_kernels.matmul_ogs_details.opt_flags as opt_flags
+import triton_kernels.matmul_ogs_details.opt_flags as opt_flags
 from triton_kernels.matmul_ogs import FlexCtx, PrecisionConfig, MicroscalingCtx
 from triton_kernels.matmul_ogs import can_use_persistent_tma
 from triton_kernels.matmul_ogs import matmul_ogs, matmul_ogs_torch
